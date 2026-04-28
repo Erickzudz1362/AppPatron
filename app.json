@@ -14,7 +14,14 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.erickzu.barberiaelpatron",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "El Patron necesita acceso a tus fotos para elegir imagenes de perfil, promociones y galeria.",
+        "NSPhotoLibraryAddUsageDescription": "El Patron necesita permiso para guardar el codigo QR de pago en tu galeria.",
+        "NSUserNotificationsUsageDescription": "El Patron usa notificaciones para avisarte sobre reservas, confirmaciones y recordatorios."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -39,8 +46,8 @@
       [
         "expo-media-library",
         {
-          "photosPermission": "El Patrón guarda el código QR de pago en tu galería.",
-          "savePhotosPermission": "El Patrón guarda el código QR de pago en tu galería.",
+          "photosPermission": "El Patron necesita acceso a tus fotos para elegir imagenes de perfil, promociones y galeria.",
+          "savePhotosPermission": "El Patron guarda el codigo QR de pago en tu galeria.",
           "isAccessMediaLocationEnabled": false,
           "granularPermissions": [
             "photo"
