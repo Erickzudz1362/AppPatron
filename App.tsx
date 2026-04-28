@@ -1,40 +1,41 @@
+// App.tsx
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+// Importar solo el handler evita cargar el registro automático de push (DevicePushTokenAutoRegistration),
+// que en Expo Go Android SDK 53+ dispara console.error y la pantalla roja de desarrollo.
+import { setNotificationHandler } from 'expo-notifications/build/NotificationsHandler';
 
-import SplashScreen from './src/screens/SplashScreen';
-import LoginScreen from './src/screens/LoginScreen';
-import ForgotPasswordScreen from './src/screens/ForgotPasswordScreen';
-import RegisterScreen from './src/screens/RegisterScreen';
-import VerifyCodeScreen from './src/screens/VerifyCodeScreen';
-import MainTabs from './src/navigation/MainTabs';
-// import BarberDetailScreen from './src/screens/barbers/BarberDetailScreen';
-
+import { AuthProvider } from './src/context/AuthContext';
+import { RootNavigator } from './src/navigation/RootNavigator';
 import { ThemeProvider, useAppTheme } from './src/theme/ThemeProvider';
 
-const Stack = createNativeStackNavigator();
+setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
-function RootNavigator() {
-  const { navTheme } = useAppTheme();
+function ThemedAppShell() {
+  const { colors } = useAppTheme();
   return (
-    <NavigationContainer theme={navTheme}>
-      <Stack.Navigator initialRouteName="Splash" screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="Splash" component={SplashScreen} />
-        <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
-        <Stack.Screen name="Register" component={RegisterScreen} />
-        <Stack.Screen name="VerifyCode" component={VerifyCodeScreen} />
-        <Stack.Screen name="Main" component={MainTabs} />
-        {/* <Stack.Screen name="BarberDetail" component={BarberDetailScreen} /> */}
-      </Stack.Navigator>
-    </NavigationContainer>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      <RootNavigator />
+    </View>
   );
 }
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <RootNavigator />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <ThemeProvider>
+          <ThemedAppShell />
+        </ThemeProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

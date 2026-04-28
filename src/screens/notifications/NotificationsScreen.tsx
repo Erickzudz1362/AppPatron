@@ -1,76 +1,39 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  SafeAreaView,
   View,
   Text,
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  Linking,
   useWindowDimensions,
   Platform,
+  RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import { TabScreenHeader } from '../../components/TabScreenHeader';
+import { NoticesListSkeleton } from '../../components/skeleton/NoticesListSkeleton';
+import { EmptyState } from '../../components/EmptyState';
+import { useAsyncResource } from '../../hooks/useAsyncResource';
+import { fetchNotices } from '../../api/supabaseData';
+import type { NoticeItem } from '../../api/fallbackData';
 import { useAppTheme } from '../../theme/ThemeProvider';
-
-type Notice = {
-  id: string;
-  type: 'promo' | 'aviso' | 'sistema';
-  title: string;
-  message: string;
-  date: string;   // ISO yyyy-mm-dd
-  read: boolean;
-  link?: string;  // opcional: abrir URL
-};
-
-// Datos ficticios
-const MOCK: Notice[] = [
-  {
-    id: 'n1',
-    type: 'promo',
-    title: 'Promo Fin de Semana',
-    message: '10% de descuento pagando el 100% por QR. Solo este sábado y domingo.',
-    date: '2025-08-20',
-    read: false,
-    link: 'https://wa.me/59170000000',
-  },
-  {
-    id: 'n2',
-    type: 'aviso',
-    title: 'Feriado 6 de Agosto',
-    message: 'La barbería cerrará por feriado cívico. Reprograma tu cita desde la app.',
-    date: '2025-08-05',
-    read: true,
-  },
-  {
-    id: 'n3',
-    type: 'sistema',
-    title: 'Tu cita fue confirmada',
-    message: 'Carlos confirmó tu cita del 28/07 a las 16:00.',
-    date: '2025-07-28',
-    read: false,
-  },
-  {
-    id: 'n4',
-    type: 'aviso',
-    title: 'Nuevo Barbero',
-    message: '¡Andrés se une al equipo! Especialista en combo y color.',
-    date: '2025-07-15',
-    read: true,
-  },
-];
+import { supabase } from '../../config/supabase';
+import { showLocalNoticeNotification } from '../../notifications/push';
+import { useAuth } from '../../context/AuthContext';
 
 const FILTERS = ['Todos', 'Promos', 'Avisos', 'Sistema'] as const;
 type FilterKey = typeof FILTERS[number];
 
-// mapa tipado de íconos y labels
-const ICONS: Record<Notice['type'], keyof typeof Feather.glyphMap> = {
+const ICONS: Record<NoticeItem['type'], keyof typeof Feather.glyphMap> = {
   promo: 'tag',
-  aviso: 'volume-2',  // en lugar de megaphone
+  aviso: 'volume-2',
   sistema: 'bell',
 };
 
-const LABELS: Record<Notice['type'], 'Promo' | 'Aviso' | 'Sistema'> = {
+const LABELS: Record<NoticeItem['type'], 'Promo' | 'Aviso' | 'Sistema'> = {
   promo: 'Promo',
   aviso: 'Aviso',
   sistema: 'Sistema',
@@ -81,10 +44,67 @@ export default function NotificationsScreen() {
   const gutter = width < 360 ? 12 : width < 400 ? 16 : width < 768 ? 20 : 24;
 
   const { colors } = useAppTheme();
+  const { session } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const tabBarHeight = useBottomTabBarHeight();
 
-  const [data, setData] = useState<Notice[]>(MOCK);
+  const { data: remoteNotices, error, refresh, showSkeleton, isRefreshing } = useAsyncResource(fetchNotices);
+  const [data, setData] = useState<NoticeItem[]>([]);
   const [filter, setFilter] = useState<FilterKey>('Todos');
+
+  useEffect(() => {
+    if (remoteNotices) setData(remoteNotices);
+  }, [remoteNotices]);
+
+  // Refresca al volver a la pestaña Avisos.
+  useFocusEffect(
+    React.useCallback(() => {
+      void refresh();
+    }, [refresh])
+  );
+
+  // Auto refresh en la misma vista (fallback estable aunque Realtime falle).
+  useEffect(() => {
+    const id = setInterval(() => {
+      // Refresco silencioso: actualiza datos sin activar el spinner de RefreshControl.
+      void fetchNotices()
+        .then((rows) => {
+          setData(rows);
+        })
+        .catch(() => {
+          // Sin ruido visual ni alertas en auto-refresh periódico.
+        });
+    }, 4000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Realtime: si el admin crea/edita/elimina avisos en Supabase, recarga automáticamente.
+  useEffect(() => {
+    const channel = supabase
+      .channel('notifications-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const row = payload.new as Record<string, unknown>;
+          const targetUserId = typeof row.target_user_id === 'string' ? row.target_user_id : null;
+          const title = typeof row.title === 'string' ? row.title : 'Nuevo aviso';
+          const body =
+            typeof row.message === 'string'
+              ? row.message
+              : typeof row.body === 'string'
+              ? row.body
+              : 'Revisa la sección Avisos.';
+          if (!targetUserId || targetUserId === session?.user?.id) {
+            void showLocalNoticeNotification(title, body);
+          }
+        }
+        void refresh();
+      })
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [refresh, session?.user?.id]);
 
   const filtered = useMemo(() => {
     switch (filter) {
@@ -99,16 +119,33 @@ export default function NotificationsScreen() {
     }
   }, [data, filter]);
 
-  const toggleRead = (id: string) => {
-    setData(prev => prev.map(n => (n.id === id ? { ...n, read: !n.read } : n)));
+  const markAsRead = async (id: string) => {
+    const prev = data;
+    const target = prev.find((n) => n.id === id);
+    if (!target) return;
+
+    // Regla de producto: cliente solo puede pasar a "leído", nunca volver a "no leído".
+    if (target.read) return;
+    setData((curr) => curr.map((n) => (n.id === id ? { ...n, read: true } : n)));
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const uid = session?.user?.id;
+      if (!uid) throw new Error('No hay sesión activa');
+
+      const { error } = await supabase
+        .from('notification_reads')
+        .upsert({ user_id: uid, notification_id: id }, { onConflict: 'user_id,notification_id' });
+      if (error) throw error;
+    } catch (e) {
+      // Revertir en caso de fallo para no mostrar estado incorrecto.
+      setData(prev);
+    }
   };
 
-  const openLink = (url?: string) => {
-    if (!url) return;
-    Linking.openURL(url);
-  };
-
-  const renderItem = ({ item }: { item: Notice }) => (
+  const renderItem = ({ item }: { item: NoticeItem }) => (
     <View style={[styles.card, !item.read && styles.unreadShadow]}>
       {/* Icono + etiqueta */}
       <View style={styles.rowBetween}>
@@ -132,32 +169,70 @@ export default function NotificationsScreen() {
 
       {/* Acciones */}
       <View style={styles.actions}>
-        <TouchableOpacity onPress={() => toggleRead(item.id)} style={styles.linkBtn}>
-          <Feather name={item.read ? 'check' : 'mail'} size={14} color={item.read ? colors.subtext : colors.primary} />
+        <TouchableOpacity
+          onPress={() => markAsRead(item.id)}
+          style={styles.linkBtn}
+          disabled={item.read}
+          activeOpacity={item.read ? 1 : 0.75}
+        >
+          <Feather name={item.read ? 'check-circle' : 'mail'} size={14} color={item.read ? colors.subtext : colors.primary} />
           <Text style={[styles.linkTxt, { color: item.read ? colors.subtext : colors.primary }]}>
-            {item.read ? 'Marcar como no leído' : 'Marcar como leído'}
+            {item.read ? 'Leído' : 'Marcar como leído'}
           </Text>
         </TouchableOpacity>
 
-        {item.link && (
-          <TouchableOpacity onPress={() => openLink(item.link)} style={styles.ctaBtn}>
-            <Feather name="external-link" size={14} color="#fff" />
-            <Text style={styles.ctaTxt}>Abrir</Text>
-          </TouchableOpacity>
-        )}
       </View>
     </View>
   );
 
+  if (showSkeleton) {
+    return (
+      <SafeAreaView
+        style={[styles.safe, { backgroundColor: colors.background }]}
+        edges={['top', 'left', 'right']}
+      >
+        <View style={{ paddingHorizontal: gutter, paddingTop: 4 }}>
+          <NoticesListSkeleton mutedColor={colors.mutedBg} cardColor={colors.card} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error && !remoteNotices) {
+    return (
+      <SafeAreaView
+        style={[styles.safe, { backgroundColor: colors.background, justifyContent: 'center' }]}
+        edges={['top', 'left', 'right']}
+      >
+        <EmptyState
+          icon="wifi-off"
+          title="No pudimos cargar los avisos"
+          subtitle={error}
+          onRetry={refresh}
+          color={colors}
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
+    >
       <FlatList
         data={filtered}
         keyExtractor={n => n.id}
-        contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: 16, paddingBottom: 24 }}
+        contentContainerStyle={{
+          paddingHorizontal: gutter,
+          paddingBottom: tabBarHeight + 20,
+        }}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.primary} />
+        }
         ListHeaderComponent={
           <>
-            <Text style={styles.header}>Avisos</Text>
+            <TabScreenHeader title="Avisos" titleColor={colors.primary} />
             {/* Filtros */}
             <FlatList
               data={FILTERS as unknown as string[]}
@@ -181,7 +256,14 @@ export default function NotificationsScreen() {
         }
         renderItem={renderItem}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
-        ListEmptyComponent={<Text style={styles.empty}>No hay avisos por ahora.</Text>}
+        ListEmptyComponent={
+          <EmptyState
+            icon="bell-off"
+            title="No hay avisos"
+            subtitle="Cuando haya promociones o novedades, aparecerán aquí."
+            color={colors}
+          />
+        }
       />
     </SafeAreaView>
   );
@@ -198,8 +280,6 @@ function createStyles(colors: {
 }) {
   return StyleSheet.create({
     safe: { flex: 1 },
-
-    header: { fontSize: 20, fontWeight: '700', color: colors.primary, marginBottom: 8 },
 
     chip: {
       height: 34,
@@ -261,7 +341,5 @@ function createStyles(colors: {
       gap: 6,
     },
     ctaTxt: { color: '#fff', fontWeight: '700', fontSize: 12 },
-
-    empty: { textAlign: 'center', color: colors.subtext, marginTop: 40 },
   });
 }

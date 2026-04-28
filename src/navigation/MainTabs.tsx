@@ -1,30 +1,35 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import Feather from 'react-native-vector-icons/Feather';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 
 import HomeScreen from '../screens/home/HomeScreen';
 import HistoryScreen from '../screens/history/HistoryScreen';
-import BarbersScreen from '../screens/barbers/BarbersScreen';
+import BarbersStackNavigator from './BarbersStack';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
-import ProfileScreen from '../screens/profile/ProfileScreen';
+import ProfileStackNavigator from './ProfileStack';
 import { useAppTheme } from '../theme/ThemeProvider';
 
 const Tab = createBottomTabNavigator();
 
 export default function MainTabs() {
   const { colors } = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const tabBarBottom = Math.max(insets.bottom, 8);
 
   return (
     <Tab.Navigator
       screenOptions={{
         headerShown: false,
+        sceneStyle: { backgroundColor: colors.background },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.subtext,
         tabBarStyle: {
-          height: 60,
-          paddingBottom: 8,
-          backgroundColor: colors.card, // 👈 cambia con el tema
-          borderTopColor: colors.border, // 👈 borde dinámico
+          paddingBottom: tabBarBottom,
+          paddingTop: 8,
+          minHeight: 52 + tabBarBottom,
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
         },
         tabBarLabelStyle: { fontSize: 12 },
       }}
@@ -47,7 +52,7 @@ export default function MainTabs() {
       />
       <Tab.Screen
         name="Barbers"
-        component={BarbersScreen}
+        component={BarbersStackNavigator}
         options={{
           tabBarLabel: 'Barberos',
           tabBarIcon: ({ color, size }) => <Feather name="scissors" color={color} size={size} />,
@@ -63,10 +68,12 @@ export default function MainTabs() {
       />
       <Tab.Screen
         name="Profile"
-        component={ProfileScreen}
+        component={ProfileStackNavigator}
         options={{
           tabBarLabel: 'Perfil',
           tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} />,
+          /** Al cambiar de pestaña, el stack interno vuelve arriba (pantalla principal de perfil, no Pago QR ni editar). */
+          popToTopOnBlur: true,
         }}
       />
     </Tab.Navigator>

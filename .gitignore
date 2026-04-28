@@ -31,7 +31,14 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+
+# editor / local tools
+Cursor/
+
+# separate projects
+admin-analytics-web/
 
 # typescript
 *.tsbuildinfo

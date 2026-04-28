@@ -1,170 +1,251 @@
 // src/screens/profile/ProfileScreen.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  SafeAreaView,
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Switch,
-  Alert,
+  Modal,
   Linking,
   useWindowDimensions,
   Platform,
+  ScrollView,
+  ActivityIndicator,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import type { CompositeNavigationProp } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
-import { useAppTheme } from '../../theme/ThemeProvider'; // 👈 usa el provider global
+import { TabScreenHeader } from '../../components/TabScreenHeader';
+import { ProfileAvatar } from '../../components/ProfileAvatar';
+import { useAuth } from '../../context/AuthContext';
+import { useAppTheme } from '../../theme/ThemeProvider';
+import { BARBER_WHATSAPP_URL } from '../../constants/contact';
+import type { ProfileStackParamList } from '../../navigation/ProfileStack';
+import AppDialog from '../../components/AppDialog';
 
-export default function ProfileScreen({ navigation }: any) {
+type ProfileNav = CompositeNavigationProp<
+  NativeStackNavigationProp<ProfileStackParamList, 'ProfileHome'>,
+  BottomTabNavigationProp<any>
+>;
+
+export default function ProfileScreen({ navigation }: { navigation: ProfileNav }) {
   const { width } = useWindowDimensions();
   const gutter = width < 360 ? 12 : width < 400 ? 16 : width < 768 ? 20 : 24;
+  const tabBarHeight = useBottomTabBarHeight();
+  const { signOut, profile, session, role, profileLoadPending } = useAuth();
 
-  // Tema global
   const { isDark, colors, toggleTheme } = useAppTheme();
 
-  // Estados locales (DB más adelante)
   const [pushEnabled, setPushEnabled] = useState(true);
+  const [darkMode, setDarkMode] = useState(isDark);
+  const [logoutConfirmVisible, setLogoutConfirmVisible] = useState(false);
+  const [errorDialog, setErrorDialog] = useState<string | null>(null);
 
-  const openWhatsApp = () => Linking.openURL('https://wa.me/59170000000');
-  const openTerms = () => Alert.alert('Términos', 'Mostrar términos y condiciones (web o screen).');
-  const openPrivacy = () => Alert.alert('Privacidad', 'Mostrar política de privacidad (web o screen).');
-  const openHelp = () => Alert.alert('Ayuda', 'FAQ, soporte por WhatsApp o email.');
+  useEffect(() => setDarkMode(isDark), [isDark]);
 
-  const handleEditProfile = () => {
-    Alert.alert('Editar perfil', 'Aquí iría la pantalla de edición (nombre, teléfono, etc.)');
-    // navigation.navigate('EditProfile');
-  };
+  const displayName =
+    profile?.name?.trim() || session?.user?.email?.split('@')[0] || 'Cliente';
+  const email = session?.user?.email ?? '—';
+  const phone = profile?.phone?.trim() || 'Sin número';
+  const roleLabel =
+    role === 'barber' ? 'Barbero' : role === 'admin' ? 'Administrador' : 'Cliente';
 
-  const handlePaymentMethods = () => {
-    Alert.alert('Métodos de pago', 'Gestión de QR / métodos guardados (futuro).');
-    // navigation.navigate('PaymentMethods');
-  };
+  const openWhatsApp = () => Linking.openURL(BARBER_WHATSAPP_URL);
+
+  const goTerms = () => navigation.navigate('LegalDocument', { document: 'terms' });
+  const goPrivacy = () => navigation.navigate('LegalDocument', { document: 'privacy' });
+  const goHelp = () => navigation.navigate('LegalDocument', { document: 'help' });
+
+  const goEdit = () => navigation.navigate('EditProfile');
+  const goQr = () => navigation.navigate('QrPayment');
 
   const handleLogout = () => {
-    Alert.alert('Sesión cerrada', 'Has cerrado sesión correctamente.');
-    navigation.replace('Login');
+    setLogoutConfirmVisible(true);
   };
 
-  const handleDeleteAccount = () => {
-    Alert.alert(
-      'Eliminar cuenta',
-      '¿Seguro que deseas eliminar tu cuenta? Esta acción es irreversible.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Eliminar', style: 'destructive', onPress: () => Alert.alert('Cuenta eliminada') },
-      ],
-    );
+  const confirmLogout = async () => {
+    setLogoutConfirmVisible(false);
+    try {
+      await signOut();
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'Error al cerrar sesión';
+      setErrorDialog(msg);
+    }
+  };
+
+  const handleDeleteAccount = () => navigation.navigate('DeleteAccount');
+
+  const goHistory = () => {
+    navigation.navigate('History' as never);
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <View style={[styles.container, { paddingHorizontal: gutter }]}>
-        {/* Header */}
-        <Text style={[styles.title, { color: colors.primary }]}>Mi Perfil</Text>
+    <SafeAreaView
+      style={[styles.safeArea, { backgroundColor: colors.background }]}
+      edges={['top', 'left', 'right']}
+    >
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingHorizontal: gutter, paddingBottom: tabBarHeight + 28 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        <TabScreenHeader title="Mi perfil" titleColor={colors.primary} />
 
-        {/* Card: usuario */}
-        <View
-          style={[
-            styles.userCard,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <Image source={require('../../../assets/Elpatron-Logo.png')} style={styles.avatar} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.name, { color: colors.text }]}>Sebastián Mendieta</Text>
-            <Text style={[styles.meta, { color: colors.subtext }]}>cliente • sebastian@email.com</Text>
-            <Text style={[styles.meta, { color: colors.subtext }]}>+591 70000000</Text>
+        {profileLoadPending && !profile ? (
+          <View style={[styles.loadingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.subtext }]}>Cargando tu perfil…</Text>
           </View>
-          <TouchableOpacity
-            onPress={handleEditProfile}
-            style={[styles.editBtn, { backgroundColor: colors.primary }]}
+        ) : (
+          <View
+            style={[
+              styles.userCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                shadowColor: isDark ? 'transparent' : '#000',
+              },
+            ]}
           >
-            <Feather name="edit-2" size={16} color={colors.onPrimary} />
-            <Text style={[styles.editText, { color: colors.onPrimary }]}>Editar</Text>
-          </TouchableOpacity>
-        </View>
+            <View style={styles.avatarCol}>
+              <ProfileAvatar photoUrl={profile?.photo_url} size={64} />
+            </View>
+            <View style={styles.userInfo}>
+              <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>
+                {displayName}
+              </Text>
+              <Text style={[styles.meta, { color: colors.subtext }]} numberOfLines={1}>
+                {roleLabel} • {email}
+              </Text>
+              <Text style={[styles.meta, { color: colors.subtext }]} numberOfLines={1}>
+                {phone}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={goEdit}
+              style={[styles.editBtn, { backgroundColor: colors.primary }]}
+            >
+              <Feather name="edit-2" size={16} color="#fff" />
+              <Text style={styles.editText}>Editar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
-        {/* Acciones rápidas */}
         <View style={styles.quickRow}>
-          <QuickAction
-            icon="credit-card"
-            label="Pago (QR)"
-            onPress={handlePaymentMethods}
-            colors={colors}
-          />
-          <QuickAction icon="message-circle" label="WhatsApp" onPress={openWhatsApp} colors={colors} />
-          <QuickAction
-            icon="calendar"
-            label="Mis reservas"
-            onPress={() => navigation.navigate('History')}
-            colors={colors}
-          />
+          <QuickAction icon="credit-card" label="Pago (QR)" color={colors} onPress={goQr} />
+          <QuickAction icon="message-circle" label="WhatsApp" color={colors} onPress={openWhatsApp} />
+          <QuickAction icon="calendar" label="Mis reservas" color={colors} onPress={goHistory} />
         </View>
 
-        {/* Preferencias */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Preferencias</Text>
         <RowSwitch
           icon="bell"
           label="Notificaciones push"
           value={pushEnabled}
           onValueChange={setPushEnabled}
-          colors={colors}
+          color={colors}
         />
         <RowSwitch
           icon="moon"
           label="Modo oscuro"
-          value={isDark}
-          onValueChange={toggleTheme}
-          colors={colors}
+          value={darkMode}
+          onValueChange={() => {
+            toggleTheme();
+            setDarkMode(!darkMode);
+          }}
+          color={colors}
         />
 
-        {/* Cuenta */}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Cuenta</Text>
-        <RowLink icon="file-text" label="Términos y Condiciones" onPress={openTerms} colors={colors} />
-        <RowLink icon="shield" label="Política de Privacidad" onPress={openPrivacy} colors={colors} />
-        <RowLink icon="help-circle" label="Ayuda" onPress={openHelp} colors={colors} />
+        <RowLink icon="file-text" label="Términos y Condiciones" onPress={goTerms} color={colors} />
+        <RowLink icon="shield" label="Política de Privacidad" onPress={goPrivacy} color={colors} />
+        <RowLink icon="help-circle" label="Ayuda" onPress={goHelp} color={colors} />
 
-        {/* Sesión */}
         <View style={{ height: 12 }} />
         <TouchableOpacity style={[styles.logout, { backgroundColor: colors.primary }]} onPress={handleLogout}>
-          <Feather name="log-out" size={18} color={colors.onPrimary} />
-          <Text style={[styles.logoutText, { color: colors.onPrimary }]}>Cerrar sesión</Text>
+          <Feather name="log-out" size={18} color="#fff" />
+          <Text style={styles.logoutText}>Cerrar sesión</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.delete} onPress={handleDeleteAccount}>
-          <Feather name="trash-2" size={16} color={colors.danger} />
-          <Text style={[styles.deleteText, { color: colors.danger }]}>Eliminar cuenta</Text>
+          <Feather name="trash-2" size={16} color={isDark ? '#ff5a67' : '#b00020'} />
+          <Text style={[styles.deleteText, { color: isDark ? '#ff5a67' : '#b00020' }]}>Eliminar cuenta</Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
+
+      <Modal
+        visible={logoutConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLogoutConfirmVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Cerrar sesión</Text>
+            <Text style={[styles.modalMessage, { color: colors.subtext }]}>
+              ¿Seguro que quieres salir de tu cuenta?
+            </Text>
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[styles.modalBtnGhost, { borderColor: colors.border, backgroundColor: colors.background }]}
+                onPress={() => setLogoutConfirmVisible(false)}
+              >
+                <Text style={[styles.modalBtnGhostText, { color: colors.text }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={confirmLogout}>
+                <Text style={styles.modalBtnText}>Salir</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <AppDialog
+        visible={!!errorDialog}
+        title="Error"
+        message={errorDialog ?? ''}
+        onClose={() => setErrorDialog(null)}
+      />
     </SafeAreaView>
   );
 }
-
-/* ---------- Componentes reutilizables (con tema) ---------- */
 
 function RowLink({
   icon,
   label,
   onPress,
-  colors,
+  color,
 }: {
-  icon: any;
+  icon: React.ComponentProps<typeof Feather>['name'];
   label: string;
   onPress: () => void;
-  colors: any;
+  color: {
+    card: string;
+    border: string;
+    primary: string;
+    text: string;
+    subtext: string;
+  };
 }) {
   return (
     <TouchableOpacity
-      style={[rowStyles.row, { backgroundColor: colors.card, borderColor: colors.border }]}
+      style={[rowStyles.row, { backgroundColor: color.card, borderColor: color.border }]}
       onPress={onPress}
       activeOpacity={0.75}
     >
       <View style={rowStyles.left}>
-        <Feather name={icon} size={18} color={colors.primary} />
-        <Text style={[rowStyles.label, { color: colors.text }]}>{label}</Text>
+        <Feather name={icon} size={18} color={color.primary} />
+        <Text style={[rowStyles.label, { color: color.text }]}>{label}</Text>
       </View>
-      <Feather name="chevron-right" size={20} color={colors.subtext} />
+      <Feather name="chevron-right" size={20} color={color.subtext} />
     </TouchableOpacity>
   );
 }
@@ -174,25 +255,30 @@ function RowSwitch({
   label,
   value,
   onValueChange,
-  colors,
+  color,
 }: {
-  icon: any;
+  icon: React.ComponentProps<typeof Feather>['name'];
   label: string;
   value: boolean;
-  onValueChange: (val: boolean) => void;
-  colors: any;
+  onValueChange: (v: boolean) => void;
+  color: {
+    card: string;
+    border: string;
+    primary: string;
+    text: string;
+  };
 }) {
   return (
-    <View style={[rowStyles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View style={[rowStyles.row, { backgroundColor: color.card, borderColor: color.border }]}>
       <View style={rowStyles.left}>
-        <Feather name={icon} size={18} color={colors.primary} />
-        <Text style={[rowStyles.label, { color: colors.text }]}>{label}</Text>
+        <Feather name={icon} size={18} color={color.primary} />
+        <Text style={[rowStyles.label, { color: color.text }]}>{label}</Text>
       </View>
       <Switch
         value={value}
         onValueChange={onValueChange}
-        trackColor={{ false: colors.border, true: colors.primary }}
-        thumbColor={colors.onPrimary}
+        trackColor={{ false: '#d9dde1', true: color.primary }}
+        thumbColor="#fff"
       />
     </View>
   );
@@ -202,52 +288,71 @@ function QuickAction({
   icon,
   label,
   onPress,
-  colors,
+  color,
 }: {
-  icon: any;
+  icon: React.ComponentProps<typeof Feather>['name'];
   label: string;
   onPress: () => void;
-  colors: any;
+  color: {
+    card: string;
+    border: string;
+    mutedBg: string;
+    primary: string;
+    text: string;
+  };
 }) {
   return (
     <TouchableOpacity
-      style={[
-        qaStyles.card,
-        { backgroundColor: colors.card, borderColor: colors.border },
-      ]}
+      style={[qaStyles.card, { backgroundColor: color.card, borderColor: color.border }]}
       onPress={onPress}
-      activeOpacity={0.8}
+      activeOpacity={0.85}
     >
-      <View style={[qaStyles.iconWrap, { backgroundColor: colors.surface }]}>
-        <Feather name={icon} size={18} color={colors.primary} />
+      <View style={[qaStyles.iconWrap, { backgroundColor: color.mutedBg }]}>
+        <Feather name={icon} size={18} color={color.primary} />
       </View>
-      <Text style={[qaStyles.label, { color: colors.text }]}>{label}</Text>
+      <Text style={[qaStyles.label, { color: color.text }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
 
-/* ----------------- Estilos base (sin colores fijos) ----------------- */
-
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, paddingTop: 40 },
-  container: { flex: 1, paddingTop: 8, paddingBottom: 24 },
-  title: { fontSize: 20, fontWeight: '700', marginBottom: 16 },
+  safeArea: { flex: 1 },
+  scroll: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
 
+  loadingCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  loadingText: { fontSize: 14 },
+
+  avatarCol: {
+    marginRight: 16,
+  },
+  userInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 4,
+  },
   userCard: {
     flexDirection: 'row',
     alignItems: 'center',
     borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
+    paddingVertical: 18,
+    paddingHorizontal: 18,
     marginBottom: 12,
     ...Platform.select({
-      ios: { shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
+      ios: { shadowOpacity: 0.06, shadowRadius: 8, shadowOffset: { width: 0, height: 3 } },
       android: { elevation: 2 },
     }),
   },
-  avatar: { width: 64, height: 64, borderRadius: 64, marginRight: 12 },
-  name: { fontSize: 16, fontWeight: '700' },
-  meta: { fontSize: 13, marginTop: 2 },
+  name: { fontSize: 16, fontWeight: '700', marginBottom: 10 },
+  meta: { fontSize: 13, marginTop: 5, lineHeight: 18 },
 
   editBtn: {
     paddingHorizontal: 10,
@@ -258,7 +363,7 @@ const styles = StyleSheet.create({
     gap: 6,
     marginLeft: 8,
   },
-  editText: { fontWeight: '600', fontSize: 12 },
+  editText: { color: '#fff', fontWeight: '600', fontSize: 12 },
 
   quickRow: { flexDirection: 'row', justifyContent: 'space-between', marginVertical: 8 },
 
@@ -273,10 +378,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  logoutText: { fontWeight: '700' },
+  logoutText: { color: '#fff', fontWeight: '700' },
 
   delete: { alignSelf: 'center', marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   deleteText: { fontSize: 13, fontWeight: '600' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 16,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '800', marginBottom: 8 },
+  modalMessage: { fontSize: 15, lineHeight: 21 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 16, gap: 10 },
+  modalBtnGhost: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnGhostText: { fontWeight: '700' },
+  modalBtn: {
+    minHeight: 42,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBtnText: { color: '#fff', fontWeight: '700' },
 });
 
 const rowStyles = StyleSheet.create({
