@@ -11,7 +11,9 @@
     "build:android:dev": "eas build -p android --profile development",
     "build:android:prod": "eas build -p android --profile production",
     "build:ios:preview": "eas build -p ios --profile preview",
+    "build:ios:internal": "eas build -p ios --profile preview",
     "build:ios:prod": "eas build -p ios --profile production",
+    "build:ios:store": "eas build -p ios --profile production",
     "build:ios:simulator": "eas build -p ios --profile ios-simulator",
     "test:supabase": "node scripts/test-supabase.js",
     "test:complete": "node scripts/test-complete.js"
