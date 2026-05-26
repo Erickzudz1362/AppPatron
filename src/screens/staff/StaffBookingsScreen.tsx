@@ -83,9 +83,9 @@ export default function StaffBookingsScreen({ navigation }: any) {
 
   const dateOptions = useMemo(() => upcomingDates(), []);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showLoader = true) => {
     if (!session?.user?.id) return;
-    setLoading(true);
+    if (showLoader) setLoading(true);
     try {
       let query = supabase
         .from('appointments')
@@ -146,17 +146,17 @@ export default function StaffBookingsScreen({ navigation }: any) {
       setBarberNameMap(nextBarberMap);
       setBarberOptions(allBarbers.map((barber) => ({ id: barber.id, name: nextBarberMap[barber.id] ?? 'Barbero' })));
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
   }, [isAdmin, isBarber, selectedBarberId, selectedDate, session?.user?.id, statusFilter]);
 
   useEffect(() => {
-    void load();
+    void load(true);
   }, [load]);
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load(false);
     }, [load])
   );
 
@@ -167,7 +167,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
 
   useEffect(() => {
     const refreshSoon = () => {
-      void load();
+      void load(false);
     };
 
     const bookingsChannel = supabase
@@ -222,7 +222,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
       statusLabel: STATUS_LABEL[next],
       barberName: barberNameMap[row.barber_id] ?? 'Barbero',
     });
-    void load();
+    void load(false);
   };
 
   const openWhatsApp = (phone: string | null | undefined) => {
@@ -307,7 +307,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
       <FlatList
         data={rows}
         keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => void load(true)} tintColor={colors.primary} />}
         contentContainerStyle={{ paddingBottom: 20 }}
         renderItem={({ item }) => {
           const client = clientMap[item.client_id];

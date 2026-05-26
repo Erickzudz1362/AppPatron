@@ -48,7 +48,7 @@ export default function NotificationsScreen() {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
 
-  const { data: remoteNotices, error, refresh, showSkeleton, isRefreshing } = useAsyncResource(fetchNotices);
+  const { data: remoteNotices, error, refresh, refreshSilently, showSkeleton, isRefreshing } = useAsyncResource(fetchNotices);
   const [data, setData] = useState<NoticeItem[]>([]);
   const [filter, setFilter] = useState<FilterKey>('Todos');
 
@@ -59,8 +59,8 @@ export default function NotificationsScreen() {
   // Refresca al volver a la pestaña Avisos.
   useFocusEffect(
     React.useCallback(() => {
-      void refresh();
-    }, [refresh])
+      void refreshSilently();
+    }, [refreshSilently])
   );
 
   // Auto refresh en la misma vista (fallback estable aunque Realtime falle).
@@ -97,14 +97,14 @@ export default function NotificationsScreen() {
             void showLocalNoticeNotification(title, body);
           }
         }
-        void refresh();
+        void refreshSilently();
       })
       .subscribe();
 
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [refresh, session?.user?.id]);
+  }, [refreshSilently, session?.user?.id]);
 
   const filtered = useMemo(() => {
     switch (filter) {

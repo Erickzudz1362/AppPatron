@@ -15,8 +15,10 @@ import { Feather } from '@expo/vector-icons';
 import { supabase } from '../../config/supabase';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import AppDialog from '../../components/AppDialog';
+import { PROFILE_AVATAR_COUNT, getAvatarPublicUrl, getAvatarStoragePath } from '../../profile/avatarAssets';
 import { StaffScreenHeader } from '../../components/StaffScreenHeader';
 import {
+  APP_AVATARS_FOLDER,
   HOME_GALLERY_FOLDER,
   HOME_MAIN_CAROUSEL_FOLDER,
   HOME_PROMO_CAROUSEL_FOLDER,
@@ -41,6 +43,14 @@ type SlidePreviewItem = PreviewItem & {
   slot: string;
 };
 
+function explainStorageError(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  if (/row-level security|violates row-level security policy|permission/i.test(raw)) {
+    return 'Supabase esta bloqueando Storage por permisos. Ejecuta el SQL fix_home_carousel_storage.sql en SQL Editor y vuelve a intentar.';
+  }
+  return raw || fallback;
+}
+
 export default function StaffMediaScreen({ navigation }: any) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -54,6 +64,7 @@ export default function StaffMediaScreen({ navigation }: any) {
   const [mainSlides, setMainSlides] = useState<SlidePreviewItem[]>([]);
   const [promoImages, setPromoImages] = useState<PreviewItem[]>([]);
   const [galleryImages, setGalleryImages] = useState<PreviewItem[]>([]);
+  const [avatarRefreshKey, setAvatarRefreshKey] = useState(() => Date.now());
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
 
@@ -197,11 +208,12 @@ export default function StaffMediaScreen({ navigation }: any) {
       });
 
       await loadMedia();
+      setAvatarRefreshKey(Date.now());
       setDialog({ title: 'Imagen subida', message: successMessage });
     } catch (error) {
       setDialog({
         title: 'No se pudo subir la imagen',
-        message: error instanceof Error ? error.message : 'Error al subir la imagen.',
+        message: explainStorageError(error, 'Error al subir la imagen.'),
       });
     } finally {
       setBusyKey(null);
@@ -216,6 +228,36 @@ export default function StaffMediaScreen({ navigation }: any) {
   const uploadGalleryImage = async () => {
     const path = `${HOME_GALLERY_FOLDER}/gallery-${Date.now()}.jpg`;
     await uploadToPath(path, 'La imagen ya fue agregada a la galeria del inicio.');
+  };
+
+  const replaceAppAvatar = async (index: number) => {
+    try {
+      const key = `avatar-${index}`;
+      setBusyKey(key);
+      const asset = await pickImageFromGallery();
+      if (!asset?.uri) return;
+
+      const targetPath = getAvatarStoragePath(index);
+      await uploadImageFromUri({
+        uri: asset.uri,
+        bucket: PROMO_CAROUSEL_BUCKET,
+        path: targetPath,
+        contentType: asset.mimeType ?? 'image/jpeg',
+      });
+
+      setAvatarRefreshKey(Date.now());
+      setDialog({
+        title: 'Avatar actualizado',
+        message: `El avatar ${index + 1} ya fue actualizado y estara disponible para todos los usuarios.`,
+      });
+    } catch (error) {
+      setDialog({
+        title: 'No se pudo subir el avatar',
+        message: explainStorageError(error, 'Error al actualizar el avatar.'),
+      });
+    } finally {
+      setBusyKey(null);
+    }
   };
 
   const resolveAssetExtension = (mimeType?: string | null, uri?: string) => {
@@ -255,7 +297,7 @@ export default function StaffMediaScreen({ navigation }: any) {
     } catch (error) {
       setDialog({
         title: 'No se pudo subir la imagen',
-        message: error instanceof Error ? error.message : 'Error al actualizar el slide.',
+        message: explainStorageError(error, 'Error al actualizar el slide.'),
       });
     } finally {
       setBusyKey(null);
@@ -275,7 +317,7 @@ export default function StaffMediaScreen({ navigation }: any) {
     } catch (error) {
       setDialog({
         title: 'No se pudo eliminar',
-        message: error instanceof Error ? error.message : 'Error al eliminar la imagen.',
+        message: explainStorageError(error, 'Error al eliminar la imagen.'),
       });
     } finally {
       setBusyKey(null);
@@ -412,6 +454,39 @@ export default function StaffMediaScreen({ navigation }: any) {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.h}>Avatares de la app</Text>
+          <Text style={styles.t}>
+            Estos avatares se usan para clientes y perfiles que eligen una imagen predeterminada. Todos se consumen desde Storage.
+          </Text>
+          <Text style={styles.small}>Bucket: {PROMO_CAROUSEL_BUCKET} / Carpeta: {APP_AVATARS_FOLDER}</Text>
+          <View style={styles.avatarAdminGrid}>
+            {Array.from({ length: PROFILE_AVATAR_COUNT }, (_, index) => {
+              const avatarKey = `avatar-${index}`;
+              const busy = busyKey === avatarKey;
+              return (
+                <View key={avatarKey} style={styles.avatarAdminCard}>
+                  <Image
+                    source={{ uri: getAvatarPublicUrl(index, avatarRefreshKey) }}
+                    style={styles.avatarAdminPreview}
+                  />
+                  <Text style={styles.avatarAdminLabel}>Avatar {index + 1}</Text>
+                  <Text style={styles.avatarAdminPath} numberOfLines={1}>
+                    {getAvatarStoragePath(index)}
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.smallBtn, busy && { opacity: 0.75 }]}
+                    onPress={() => void replaceAppAvatar(index)}
+                    disabled={busy}
+                  >
+                    {busy ? <ActivityIndicator color="#fff" size="small" /> : <Text style={styles.smallBtnText}>Cambiar</Text>}
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.h}>Textos del inicio</Text>
           <TextInput
             style={[styles.input, { minHeight: 92 }]}
@@ -531,5 +606,50 @@ function createStyles(colors: { primary: string; background: string; card: strin
     optionChipTextActive: {
       color: '#fff',
     },
+    avatarAdminGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginTop: 10,
+    },
+    avatarAdminCard: {
+      width: '31%',
+      minWidth: 100,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      padding: 10,
+      backgroundColor: colors.background,
+      alignItems: 'center',
+      gap: 6,
+    },
+    avatarAdminLabel: {
+      color: colors.text,
+      fontWeight: '700',
+      fontSize: 12,
+      textAlign: 'center',
+    },
+    avatarAdminPath: {
+      color: colors.subtext,
+      fontSize: 10,
+      textAlign: 'center',
+    },
+    avatarAdminPreview: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      backgroundColor: colors.border,
+    },
+    smallBtn: {
+      minHeight: 36,
+      alignSelf: 'stretch',
+      borderRadius: 10,
+      backgroundColor: colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 10,
+      marginTop: 2,
+    },
+    smallBtnText: { color: '#fff', fontWeight: '700', fontSize: 12 },
   });
 }

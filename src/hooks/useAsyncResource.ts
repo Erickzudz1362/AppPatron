@@ -18,6 +18,8 @@ export function useAsyncResource<T>(factory: () => Promise<T>, options?: Options
   const factoryRef = useRef(factory);
   factoryRef.current = factory;
   const mountedRef = useRef(true);
+  const dataRef = useRef<T | undefined>(undefined);
+  dataRef.current = data;
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -25,8 +27,9 @@ export function useAsyncResource<T>(factory: () => Promise<T>, options?: Options
     };
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    const shouldShowLoading = !silent || dataRef.current === undefined;
+    if (shouldShowLoading) setLoading(true);
     setError(null);
     try {
       const result = await factoryRef.current();
@@ -34,7 +37,7 @@ export function useAsyncResource<T>(factory: () => Promise<T>, options?: Options
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Error desconocido');
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && shouldShowLoading) setLoading(false);
     }
   }, []);
 
@@ -43,11 +46,19 @@ export function useAsyncResource<T>(factory: () => Promise<T>, options?: Options
       setLoading(false);
       return;
     }
-    void load();
+    void load(false);
   }, [enabled, load]);
 
   const showSkeleton = loading && data === undefined;
   const isRefreshing = loading && data !== undefined;
 
-  return { data, loading, error, refresh: load, showSkeleton, isRefreshing };
+  return {
+    data,
+    loading,
+    error,
+    refresh: () => load(false),
+    refreshSilently: () => load(true),
+    showSkeleton,
+    isRefreshing,
+  };
 }

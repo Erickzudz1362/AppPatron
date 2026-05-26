@@ -5,6 +5,7 @@ import { supabase } from '../config/supabase';
 export const BARBER_PHOTOS_BUCKET = 'barber-photos';
 export const PROMO_CAROUSEL_BUCKET =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_HOME_CAROUSEL_BUCKET?.trim()) || 'home-carousel';
+export const APP_AVATARS_FOLDER = 'avatars';
 export const HOME_GALLERY_FOLDER = 'gallery';
 export const HOME_MAIN_CAROUSEL_FOLDER = 'carousel';
 export const HOME_PROMO_CAROUSEL_FOLDER = 'PromoCarousel';

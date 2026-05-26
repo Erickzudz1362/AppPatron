@@ -77,11 +77,11 @@ export default function HistoryScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const gutter = width < 360 ? 12 : width < 400 ? 16 : width < 768 ? 20 : 24;
 
-  const { data: rows, error, refresh, showSkeleton, isRefreshing } = useAsyncResource(fetchHistoryRows);
+  const { data: rows, error, refresh, refreshSilently, showSkeleton, isRefreshing } = useAsyncResource(fetchHistoryRows);
   useFocusEffect(
     React.useCallback(() => {
-      void refresh();
-    }, [refresh])
+      void refreshSilently();
+    }, [refreshSilently])
   );
   React.useEffect(() => {
     const uid = session?.user?.id;
@@ -89,13 +89,13 @@ export default function HistoryScreen() {
     const ch = supabase
       .channel(`appointments-client-${uid}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `client_id=eq.${uid}` }, () => {
-        void refresh();
+        void refreshSilently();
       })
       .subscribe();
     return () => {
       supabase.removeChannel(ch);
     };
-  }, [refresh, session?.user?.id]);
+  }, [refreshSilently, session?.user?.id]);
 
   const historyData = rows ?? [];
 

@@ -7,12 +7,12 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import * as Linking from 'expo-linking';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { supabase } from '../config/supabase';
 import { getAuthEmailRedirectUrl, parseSupabaseAuthRedirect } from '../config/authRedirect';
-import { registerPushToken } from '../notifications/push';
+import { registerPushToken, showLocalNoticeNotification } from '../notifications/push';
 import type { Profile, UserRole } from '../types/profile';
 import { parseRole } from '../types/profile';
 
@@ -69,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profileResolution, setProfileResolution] = useState<ProfileResolution>('idle');
   const [passwordRecovery, setPasswordRecovery] = useState(false);
   const handlingPasswordSignInRef = useRef(false);
+  const handlingAuthRedirectRef = useRef(false);
   const hydratingUserIdRef = useRef<string | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const profileRef = useRef<Profile | null>(null);
@@ -280,26 +281,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (parsed.access_token && parsed.refresh_token) {
+        handlingAuthRedirectRef.current = true;
         const { data, error } = await supabase.auth.setSession({
           access_token: parsed.access_token,
           refresh_token: parsed.refresh_token,
         });
         if (error) {
+          handlingAuthRedirectRef.current = false;
           Alert.alert('Error de sesion', error.message);
           return;
         }
 
         if (parsed.type === 'recovery') {
           setPasswordRecovery(true);
+          setProfileResolution('done');
           setSession(data.session ?? null);
+          handlingAuthRedirectRef.current = false;
           return;
         }
 
         setPasswordRecovery(false);
+        setProfileResolution('done');
         setProfile(null);
-        setProfileResolution('idle');
         await clearLocalAuthSession();
         setSession(null);
+        handlingAuthRedirectRef.current = false;
         Alert.alert('Correo confirmado', 'Tu cuenta ya fue confirmada. Ahora inicia sesion en la app.');
       }
     };
@@ -330,6 +336,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (event === 'SIGNED_IN' && nextSession?.user) {
         if (handlingPasswordSignInRef.current) return;
+        if (handlingAuthRedirectRef.current) return;
         if (sessionRef.current?.user?.id === nextSession.user.id && profileRef.current?.id === nextSession.user.id) {
           setSession(nextSession);
           return;
@@ -354,6 +361,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const uid = session?.user?.id;
     if (!uid || !profile) return;
     void syncPushTokenToProfile(uid, profile.push_tokens);
+  }, [profile, session?.user?.id]);
+
+  useEffect(() => {
+    const uid = session?.user?.id;
+    if (!uid || !profile) return;
+
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        void syncPushTokenToProfile(uid, profile.push_tokens);
+      }
+    });
+
+    return () => sub.remove();
+  }, [profile, session?.user?.id]);
+
+  useEffect(() => {
+    const uid = session?.user?.id;
+    const currentRole = profile ? parseRole(profile.role) : null;
+    if (!uid || !currentRole || !['admin', 'barber'].includes(currentRole)) return;
+
+    const channel = supabase
+      .channel(`global-notice-${uid}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `target_user_id=eq.${uid}` },
+        (payload) => {
+          const row = payload.new as Record<string, unknown>;
+          const title = typeof row.title === 'string' ? row.title : 'Nuevo aviso';
+          const body =
+            typeof row.message === 'string'
+              ? row.message
+              : typeof row.body === 'string'
+              ? row.body
+              : 'Tienes una nueva notificacion.';
+          void showLocalNoticeNotification(title, body);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
   }, [profile, session?.user?.id]);
 
   const signIn = useCallback(

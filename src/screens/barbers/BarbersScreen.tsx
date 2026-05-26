@@ -22,7 +22,7 @@ export default function BarbersScreen({ navigation, route }: any) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
 
-  const { data: barbersData, error, refresh, showSkeleton, isRefreshing } = useAsyncResource(fetchBarbersFull);
+  const { data: barbersData, error, refresh, refreshSilently, showSkeleton, isRefreshing } = useAsyncResource(fetchBarbersFull);
   const allBarbers = barbersData ?? [];
 
   const [query, setQuery] = useState('');
@@ -39,8 +39,8 @@ export default function BarbersScreen({ navigation, route }: any) {
 
   useFocusEffect(
     React.useCallback(() => {
-      void refresh();
-    }, [refresh])
+      void refreshSilently();
+    }, [refreshSilently])
   );
 
   useFocusEffect(
@@ -60,7 +60,7 @@ export default function BarbersScreen({ navigation, route }: any) {
 
   React.useEffect(() => {
     const refreshSoon = () => {
-      void refresh();
+      void refreshSilently();
     };
 
     const barbersChannel = supabase
@@ -76,7 +76,7 @@ export default function BarbersScreen({ navigation, route }: any) {
       clearInterval(intervalId);
       void supabase.removeChannel(barbersChannel);
     };
-  }, [refresh]);
+  }, [refreshSilently]);
 
   const filtered = useMemo(() => {
     return allBarbers.filter((barber) => {

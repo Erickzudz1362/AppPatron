@@ -45,7 +45,7 @@ export default function HomeScreen({ navigation }: any) {
   const { profile } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
-  const { data, error, refresh, showSkeleton, isRefreshing } = useAsyncResource(fetchHomeBundle);
+  const { data, error, refresh, refreshSilently, showSkeleton, isRefreshing } = useAsyncResource(fetchHomeBundle);
 
   const barbers = data?.barbers ?? [];
   const services = data?.services ?? [];
@@ -120,14 +120,14 @@ export default function HomeScreen({ navigation }: any) {
 
   useFocusEffect(
     React.useCallback(() => {
-      void refresh();
+      void refreshSilently();
       void loadSecondCarousel();
-    }, [loadSecondCarousel, refresh])
+    }, [loadSecondCarousel, refreshSilently])
   );
 
   useEffect(() => {
     const refreshSoon = () => {
-      void refresh();
+      void refreshSilently();
       void loadSecondCarousel();
     };
 
@@ -145,7 +145,7 @@ export default function HomeScreen({ navigation }: any) {
       clearInterval(intervalId);
       void supabase.removeChannel(homeChannel);
     };
-  }, [loadSecondCarousel, refresh]);
+  }, [loadSecondCarousel, refreshSilently]);
 
   const secondCarouselSources: ImageSourcePropType[] = useMemo(
     () => secondCarouselUrls.map((url) => ({ uri: url })),
