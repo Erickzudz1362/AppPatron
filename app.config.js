@@ -6,17 +6,17 @@ module.exports = () => {
   return {
     ...expo,
     owner: 'erickzu',
-    icon: './assets/Elpatron-Logo.png',
+    icon: './assets/app-patron-icon.png',
     splash: {
       ...(expo.splash || {}),
-      image: './assets/Elpatron-Logo.png',
+      image: './assets/app-patron-icon.png',
       resizeMode: 'contain',
       backgroundColor: '#ffffff',
     },
     android: {
       ...(expo.android || {}),
       adaptiveIcon: {
-        foregroundImage: './assets/Elpatron-Logo.png',
+        foregroundImage: './assets/app-patron-icon.png',
         backgroundColor: '#ffffff',
       },
     },

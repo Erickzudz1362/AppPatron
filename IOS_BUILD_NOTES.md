@@ -1,4 +1,4 @@
-# Build iOS - El Patron
+﻿# Build iOS - El Patron
 
 Esta copia queda preparada para compilar iOS con Expo EAS desde una Mac.
 
@@ -28,12 +28,3 @@ npm run build:ios:store
 ```
 
 El archivo final de iOS no es APK. Para iPhone se genera un build iOS/IPA y normalmente se prueba o distribuye por TestFlight/App Store Connect.
-
-## Importante
-
-Antes de compilar confirma que:
-
-- `EXPO_PUBLIC_SUPABASE_URL` y `EXPO_PUBLIC_SUPABASE_ANON_KEY` existen en `.env`.
-- Las funciones de Supabase usadas por la app ya estan desplegadas.
-- Las politicas de Storage permiten leer galeria, promos, carousel y avatars.
-- El bundle identifier es `com.erickzu.barberiaelpatron`.

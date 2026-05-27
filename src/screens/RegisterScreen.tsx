@@ -81,8 +81,8 @@ export default function RegisterScreen({
       const fullName = buildFullName(nombres, apellidos);
       await signUp(emailTrim, pass, { name: fullName, phone: phone.trim() });
       setDialog({
-        title: 'Cuenta creada',
-        message: 'Revisa tu correo para confirmar la cuenta y luego inicia sesión.',
+        title: 'Correo enviado',
+        message: `Te enviamos un enlace de confirmación a ${emailTrim}. Abre tu correo, confirma la cuenta y vuelve a iniciar sesión en la app.`,
         onClose: () => navigation.replace('Login'),
       });
     } catch (e: unknown) {

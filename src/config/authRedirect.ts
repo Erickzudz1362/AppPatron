@@ -1,29 +1,23 @@
-import * as Linking from 'expo-linking';
-
 /**
- * URL a la que Supabase redirige tras confirmar correo, magic link o reset de contraseña.
+ * URL a la que Supabase redirige tras confirmar correo, magic link o reset de contrasena.
  *
- * Si esta URL no está permitida en Supabase, el navegador puede terminar en localhost,
- * about:blank o una pantalla vacía.
+ * Para evitar pantalla blanca al confirmar desde el correo, por defecto usamos
+ * una pagina web estatica que solo muestra "Cuenta verificada".
  *
  * En Supabase -> Authentication -> URL Configuration:
- * - Site URL: `barberiaelpatron://auth-callback`
+ * - Site URL: `https://barberia-el-patron-opal.vercel.app`
  * - Additional Redirect URLs:
- *   - `barberiaelpatron://**`
- *   - `exp://**`
+ *   - `https://barberia-el-patron-opal.vercel.app/**`
  */
+const PUBLIC_AUTH_CONFIRMED_URL = 'https://barberia-el-patron-opal.vercel.app/auth-confirmed.html';
+
 export function getAuthEmailRedirectUrl(): string {
   const fromEnv =
     typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_SUPABASE_AUTH_REDIRECT
       ? String(process.env.EXPO_PUBLIC_SUPABASE_AUTH_REDIRECT).trim()
       : '';
   if (fromEnv) return fromEnv;
-
-  const linkingUrl = Linking.createURL('auth-callback');
-  if (linkingUrl.startsWith('exp://') || linkingUrl.startsWith('http')) {
-    return 'barberiaelpatron://auth-callback';
-  }
-  return linkingUrl;
+  return PUBLIC_AUTH_CONFIRMED_URL;
 }
 
 export function getAuthPasswordResetRedirectUrl(): string {

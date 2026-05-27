@@ -6,6 +6,7 @@ node_modules/
 # Expo
 .expo/
 dist/
+dist-web/
 web-build/
 expo-env.d.ts
 
@@ -33,6 +34,7 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+AppPatronIcon.png
 
 # editor / local tools
 Cursor/
