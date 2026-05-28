@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-patron-pwa-v1';
+const CACHE_NAME = 'el-patron-pwa-v4';
 const CORE_ASSETS = [
   '/',
   '/manifest.webmanifest',

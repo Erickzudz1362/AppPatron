@@ -70,10 +70,7 @@ export default function BarbersScreen({ navigation, route }: any) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'barber_reviews' }, refreshSoon)
       .subscribe();
 
-    const intervalId = setInterval(refreshSoon, 5000);
-
     return () => {
-      clearInterval(intervalId);
       void supabase.removeChannel(barbersChannel);
     };
   }, [refreshSilently]);

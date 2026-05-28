@@ -23,7 +23,7 @@ function SignOutHeaderRight() {
 export default function BarberStaffTabs() {
   const { colors } = useAppTheme();
   const insets = useSafeAreaInsets();
-  const tabBarBottom = Math.max(insets.bottom, 8);
+  const tabBarBottom = Math.max(insets.bottom, 12);
 
   return (
     <Tab.Navigator
@@ -40,11 +40,13 @@ export default function BarberStaffTabs() {
         tabBarStyle: {
           paddingBottom: tabBarBottom,
           paddingTop: 8,
-          minHeight: 52 + tabBarBottom,
+          height: 64 + tabBarBottom,
+          minHeight: 64 + tabBarBottom,
           backgroundColor: colors.card,
           borderTopColor: colors.border,
         },
-        tabBarLabelStyle: { fontSize: 12 },
+        tabBarIconStyle: { marginTop: 2 },
+        tabBarLabelStyle: { fontSize: 11, lineHeight: 14, paddingBottom: 2 },
       }}
     >
       <Tab.Screen

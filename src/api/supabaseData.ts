@@ -14,6 +14,7 @@ import {
   type NoticeItem,
 } from './fallbackData';
 import { isSupabaseConfigured } from '../utils/supabaseReady';
+import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../utils/imageUrls';
 
 const warned = new Set<string>();
 
@@ -76,7 +77,9 @@ export async function fetchHomeBarbers(): Promise<HomeBarber[]> {
     const { data: profs } = await supabase.from('profiles').select('id, name, photo_url').in('id', uids);
     ((profs ?? []) as { id: string; name: string | null; photo_url: string | null }[]).forEach((profile) => {
       nameByUser[profile.id] = profile.name?.trim() || 'Barbero';
-      photoByUser[profile.id] = profile.photo_url?.trim() || null;
+      photoByUser[profile.id] = profile.photo_url?.trim()
+        ? optimizeSupabaseImageUrl(profile.photo_url.trim(), { width: 180, height: 180, quality: 78 })
+        : null;
     });
   }
 
@@ -128,8 +131,13 @@ export async function fetchHomeBundle(): Promise<HomeBundle> {
       galleryRes.error == null
         ? (galleryRes.data ?? [])
             .filter((file) => !!file.name && !file.name.endsWith('/'))
-            .map((file) => supabase.storage.from(PROMO_CAROUSEL_BUCKET).getPublicUrl(`${HOME_GALLERY_FOLDER}/${file.name}`).data.publicUrl)
+            .map((file) => {
+              const url = supabase.storage.from(PROMO_CAROUSEL_BUCKET).getPublicUrl(`${HOME_GALLERY_FOLDER}/${file.name}`).data.publicUrl;
+              const version = encodeURIComponent(String(file.updated_at ?? file.created_at ?? file.name));
+              return optimizeSupabaseImageUrl(`${url}?v=${version}`, { width: 760, quality: 74, resize: 'cover' });
+            })
         : [];
+    prefetchImageUrls(galleryUrls);
 
     return {
       barbers,
@@ -204,7 +212,9 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
   ((profs ?? []) as { id: string; name: string | null; photo_url: string | null }[]).forEach((profile) => {
     profileByUser[profile.id] = {
       name: profile.name?.trim() || 'Barbero',
-      photoUrl: profile.photo_url?.trim() || null,
+      photoUrl: profile.photo_url?.trim()
+        ? optimizeSupabaseImageUrl(profile.photo_url.trim(), { width: 180, height: 180, quality: 78 })
+        : null,
     };
   });
 

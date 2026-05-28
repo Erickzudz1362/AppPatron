@@ -6,6 +6,7 @@ import {
   getAvatarPublicUrl,
   isBuiltinAvatarPhotoUrl,
 } from '../profile/avatarAssets';
+import { optimizeSupabaseImageUrl } from '../utils/imageUrls';
 
 type Props = {
   photoUrl: string | null | undefined;
@@ -26,7 +27,7 @@ export function ProfileAvatar({ photoUrl, size = 64, style }: Props) {
   if (isRemote) {
     return (
       <Image
-        source={{ uri: photoUrl!.trim() }}
+        source={{ uri: optimizeSupabaseImageUrl(photoUrl!.trim(), { width: size * 3, height: size * 3, quality: 78 }) }}
         style={[{ width: size, height: size, borderRadius: size / 2 }, style]}
       />
     );

@@ -26,6 +26,7 @@ import { DEFAULT_BARBER_AVATAR } from '../../api/fallbackData';
 import { supabase } from '../../config/supabase';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { useAuth } from '../../context/AuthContext';
+import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../../utils/imageUrls';
 
 const { width } = Dimensions.get('window');
 const MODAL_IMAGE_SIZE = Math.min(width - 24, 420);
@@ -88,10 +89,16 @@ export default function HomeScreen({ navigation }: any) {
           const { data: publicUrl } = supabase.storage
             .from(SECOND_CAROUSEL_BUCKET)
             .getPublicUrl(`${SECOND_CAROUSEL_FOLDER}/${file.name}`);
-          return publicUrl.publicUrl;
+          const version = encodeURIComponent(String(file.updated_at ?? file.created_at ?? file.name));
+          return optimizeSupabaseImageUrl(`${publicUrl.publicUrl}?v=${version}`, {
+            width: 760,
+            quality: 74,
+            resize: 'cover',
+          });
         })
         .filter(Boolean);
 
+      prefetchImageUrls(urls);
       setSecondCarouselUrls(urls);
     },
     []
@@ -139,10 +146,7 @@ export default function HomeScreen({ navigation }: any) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, refreshSoon)
       .subscribe();
 
-    const intervalId = setInterval(refreshSoon, 5000);
-
     return () => {
-      clearInterval(intervalId);
       void supabase.removeChannel(homeChannel);
     };
   }, [loadSecondCarousel, refreshSilently]);
@@ -225,7 +229,7 @@ export default function HomeScreen({ navigation }: any) {
               activeOpacity={0.85}
             >
               <Image
-                source={barber.avatarUrl ? { uri: barber.avatarUrl } : DEFAULT_BARBER_AVATAR}
+                source={barber.avatarUrl ? { uri: optimizeSupabaseImageUrl(barber.avatarUrl, { width: 180, height: 180, quality: 78 }) } : DEFAULT_BARBER_AVATAR}
                 style={[styles.avatar, !barber.available && { opacity: 0.5 }]}
               />
               <Text style={styles.barberName}>{barber.name}</Text>

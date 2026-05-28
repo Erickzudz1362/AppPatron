@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, ScrollView, Image, StyleSheet, ImageSourcePropType, useWindowDimensions } from 'react-native';
 import { supabase } from '../config/supabase';
 import { useAppTheme } from '../theme/ThemeProvider';
+import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../utils/imageUrls';
 
 const FALLBACK_BANNERS: ImageSourcePropType[] = [
   require('../../assets/banners/banner1.jpg'),
@@ -34,13 +35,22 @@ export default function PromoCarousel() {
 
       if (error || !mounted) return;
 
+      const remoteUrls: string[] = [];
       const resolved = HOME_CAROUSEL_SLOTS.map((slot, slotIndex) => {
         const file = (files ?? []).find((item) => item.name.toLowerCase().startsWith(`${slot}.`));
         if (!file) return FALLBACK_BANNERS[slotIndex];
         const { data } = supabase.storage.from(HOME_CAROUSEL_BUCKET).getPublicUrl(`carousel/${file.name}`);
-        return { uri: `${data.publicUrl}?v=${Date.now()}` };
+        const version = encodeURIComponent(String(file.updated_at ?? file.created_at ?? file.name));
+        const optimizedUrl = optimizeSupabaseImageUrl(`${data.publicUrl}?v=${version}`, {
+          width: 900,
+          quality: 76,
+          resize: 'contain',
+        });
+        remoteUrls.push(optimizedUrl);
+        return { uri: optimizedUrl };
       });
 
+      prefetchImageUrls(remoteUrls);
       setFailed([false, false, false]);
       setBanners(resolved);
     })();
@@ -91,7 +101,7 @@ export default function PromoCarousel() {
                 });
               }}
               style={styles.slideImg}
-              resizeMode="cover"
+              resizeMode="contain"
             />
           </View>
         ))}
@@ -118,12 +128,10 @@ const styles = StyleSheet.create({
     height: 174,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
   },
   slideImg: {
     width: '100%',
     height: '100%',
-    borderRadius: 16,
   },
   dots: { position: 'absolute', bottom: 8, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center' },
   dot: { width: 6, height: 6, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.5)', marginHorizontal: 4 },

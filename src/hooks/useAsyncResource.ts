@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
+const resourceCache = new WeakMap<() => Promise<unknown>, unknown>();
+
 type Options = {
   /** Si es false, no ejecuta la carga automática (por defecto true). */
   enabled?: boolean;
@@ -12,8 +14,9 @@ type Options = {
  */
 export function useAsyncResource<T>(factory: () => Promise<T>, options?: Options) {
   const enabled = options?.enabled !== false;
-  const [data, setData] = useState<T | undefined>(undefined);
-  const [loading, setLoading] = useState(true);
+  const cached = resourceCache.get(factory as () => Promise<unknown>) as T | undefined;
+  const [data, setData] = useState<T | undefined>(cached);
+  const [loading, setLoading] = useState(cached === undefined);
   const [error, setError] = useState<string | null>(null);
   const factoryRef = useRef(factory);
   factoryRef.current = factory;
@@ -33,6 +36,7 @@ export function useAsyncResource<T>(factory: () => Promise<T>, options?: Options
     setError(null);
     try {
       const result = await factoryRef.current();
+      resourceCache.set(factoryRef.current as () => Promise<unknown>, result);
       if (mountedRef.current) setData(result);
     } catch (e: unknown) {
       if (mountedRef.current) setError(e instanceof Error ? e.message : 'Error desconocido');
