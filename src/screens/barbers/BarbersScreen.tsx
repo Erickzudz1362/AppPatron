@@ -9,7 +9,7 @@ import { BarbersListSkeleton } from '../../components/skeleton/BarbersListSkelet
 import { EmptyState } from '../../components/EmptyState';
 import { useAsyncResource } from '../../hooks/useAsyncResource';
 import { fetchBarbersFull } from '../../api/supabaseData';
-import { DEFAULT_BARBER_AVATAR, type BarberListItem } from '../../api/fallbackData';
+import type { BarberListItem } from '../../api/fallbackData';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { supabase } from '../../config/supabase';
 import { RemoteImage } from '../../components/RemoteImage';
@@ -97,7 +97,6 @@ export default function BarbersScreen({ navigation, route }: any) {
       {typeof item.avatar === 'object' && item.avatar != null && 'uri' in item.avatar ? (
         <RemoteImage
           uri={(item.avatar as { uri: string }).uri}
-          fallbackSource={DEFAULT_BARBER_AVATAR}
           optimize={{ width: 180, height: 180, quality: 78 }}
           style={[styles.avatar, !item.isAvailable && { opacity: 0.55 }]}
         />

@@ -36,7 +36,7 @@ export function RemoteImage({ uri, fallbackSource, optimize, onError, ...props }
           setSource({ uri: originalUri });
           return;
         }
-        if (fallbackSource) {
+        if (fallbackSource && !originalUri) {
           setSource(fallbackSource);
           return;
         }

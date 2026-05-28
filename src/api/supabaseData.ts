@@ -1,4 +1,5 @@
 import type { ImageSourcePropType } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../config/supabase';
 import { HOME_GALLERY_FOLDER, PROMO_CAROUSEL_BUCKET } from '../utils/storageUpload';
 import {
@@ -17,6 +18,11 @@ import { isSupabaseConfigured } from '../utils/supabaseReady';
 import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../utils/imageUrls';
 
 const warned = new Set<string>();
+const BARBERS_FULL_CACHE_KEY = 'el_patron_barbers_full_v2';
+const BARBERS_FULL_MEMORY_TTL_MS = 15_000;
+let barbersFullMemoryCache: BarberListItem[] | null = null;
+let barbersFullMemoryAt = 0;
+let servedPersistedBarbersCache = false;
 
 function warnOnce(key: string, message: string) {
   if (warned.has(key)) return;
@@ -192,8 +198,63 @@ function mapBarberFullRow(
   };
 }
 
+type CachedBarberListItem = Omit<BarberListItem, 'avatar'> & {
+  avatarUri: string | null;
+};
+
+function serializeBarberList(items: BarberListItem[]): CachedBarberListItem[] {
+  return items.map((item) => ({
+    ...item,
+    avatarUri:
+      typeof item.avatar === 'object' && item.avatar != null && 'uri' in item.avatar
+        ? String(item.avatar.uri)
+        : null,
+  }));
+}
+
+function hydrateBarberList(items: CachedBarberListItem[]): BarberListItem[] {
+  return items.map((item) => ({
+    ...item,
+    avatar: item.avatarUri ? { uri: item.avatarUri } : DEFAULT_BARBER_AVATAR,
+  }));
+}
+
+async function readPersistedBarbersCache(): Promise<BarberListItem[] | null> {
+  try {
+    const raw = await AsyncStorage.getItem(BARBERS_FULL_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { savedAt: number; items: CachedBarberListItem[] };
+    if (!Array.isArray(parsed.items) || !parsed.items.length) return null;
+    return hydrateBarberList(parsed.items);
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedBarbersCache(items: BarberListItem[]) {
+  void AsyncStorage.setItem(
+    BARBERS_FULL_CACHE_KEY,
+    JSON.stringify({ savedAt: Date.now(), items: serializeBarberList(items) })
+  ).catch(() => undefined);
+}
+
 export async function fetchBarbersFull(): Promise<BarberListItem[]> {
   if (!isSupabaseConfigured()) return FALLBACK_BARBERS_FULL;
+
+  const now = Date.now();
+  if (barbersFullMemoryCache && now - barbersFullMemoryAt < BARBERS_FULL_MEMORY_TTL_MS) {
+    return barbersFullMemoryCache;
+  }
+
+  if (!servedPersistedBarbersCache) {
+    servedPersistedBarbersCache = true;
+    const persisted = await readPersistedBarbersCache();
+    if (persisted?.length) {
+      barbersFullMemoryCache = persisted;
+      barbersFullMemoryAt = now;
+      return persisted;
+    }
+  }
 
   const { data, error } = await supabase.from('barbers').select('id, user_id, active, specialties').limit(40);
   if (error) {
@@ -204,9 +265,14 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
 
   const rows = data as Record<string, unknown>[];
   const uids = Array.from(new Set(rows.map((row) => String(row.user_id ?? '')).filter(Boolean)));
-  const { data: profs } = uids.length
-    ? await supabase.from('profiles').select('id, name, photo_url').in('id', uids)
-    : { data: [] };
+  const barberIds = rows.map((row) => String(row.id));
+  const [profilesRes, reviewsRes] = await Promise.all([
+    uids.length ? supabase.from('profiles').select('id, name, photo_url').in('id', uids) : Promise.resolve({ data: [] }),
+    barberIds.length
+      ? supabase.from('barber_reviews').select('barber_id, rating').in('barber_id', barberIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const profs = profilesRes.data;
 
   const profileByUser: Record<string, { name: string; photoUrl: string | null }> = {};
   ((profs ?? []) as { id: string; name: string | null; photo_url: string | null }[]).forEach((profile) => {
@@ -218,10 +284,12 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
     };
   });
 
-  const barberIds = rows.map((row) => String(row.id));
   const avgByBarber: Record<string, number> = {};
   const countByBarber: Record<string, number> = {};
-  const { data: reviews, error: reviewsError } = await supabase.from('barber_reviews').select('barber_id, rating').in('barber_id', barberIds);
+  const { data: reviews, error: reviewsError } = reviewsRes as {
+    data: { barber_id: string; rating: number }[] | null;
+    error: { message: string } | null;
+  };
   if (!reviewsError && reviews?.length) {
     const sums: Record<string, { sum: number; count: number }> = {};
     (reviews as { barber_id: string; rating: number }[]).forEach((review) => {
@@ -236,13 +304,17 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
     });
   }
 
-  return rows.map((row) => {
+  const mapped = rows.map((row) => {
     const userId = String(row.user_id ?? '');
     const profile = profileByUser[userId];
     const rating = avgByBarber[String(row.id)] ?? 0;
     const ratingCount = countByBarber[String(row.id)] ?? 0;
     return mapBarberFullRow(row, profile?.name ?? 'Barbero', profile?.photoUrl ?? null, rating, ratingCount);
   });
+  barbersFullMemoryCache = mapped;
+  barbersFullMemoryAt = Date.now();
+  writePersistedBarbersCache(mapped);
+  return mapped;
 }
 
 function mapAppointmentRow(r: Record<string, unknown>, barberName: string, serviceName: string): HistoryRow {

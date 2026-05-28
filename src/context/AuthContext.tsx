@@ -36,8 +36,8 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
-const SPLASH_MIN_MS = 450;
-const PROFILE_CACHE_PREFIX = 'el_patrón_profile_';
+const SPLASH_MIN_MS = 2000;
+const PROFILE_CACHE_PREFIX = 'el_patron_profile_';
 
 function isInvalidRefreshSessionError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
