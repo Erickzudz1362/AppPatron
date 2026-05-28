@@ -8,9 +8,6 @@ module.exports = () => {
     owner: 'erickzu',
     icon: './assets/app-patron-icon.png',
     splash: {
-      ...(expo.splash || {}),
-      image: './assets/app-patron-icon.png',
-      resizeMode: 'contain',
       backgroundColor: '#ffffff',
     },
     android: {

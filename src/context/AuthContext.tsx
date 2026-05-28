@@ -8,6 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { Alert, AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { supabase } from '../config/supabase';
@@ -35,7 +36,8 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
-const SPLASH_MIN_MS = 2000;
+const SPLASH_MIN_MS = 450;
+const PROFILE_CACHE_PREFIX = 'el_patrón_profile_';
 
 function isInvalidRefreshSessionError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -59,6 +61,26 @@ async function syncPushTokenToProfile(userId: string, current: string[] | null |
   const { error } = await supabase.from('profiles').update({ push_tokens: next }).eq('id', userId);
   if (error) {
     console.warn('[Auth] push_tokens:', error.message);
+  }
+}
+
+async function readCachedProfile(userId: string): Promise<Profile | null> {
+  try {
+    const raw = await AsyncStorage.getItem(`${PROFILE_CACHE_PREFIX}${userId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Profile;
+    if (parsed?.id !== userId) return null;
+    return { ...parsed, role: parseRole(parsed.role) };
+  } catch {
+    return null;
+  }
+}
+
+async function writeCachedProfile(profile: Profile): Promise<void> {
+  try {
+    await AsyncStorage.setItem(`${PROFILE_CACHE_PREFIX}${profile.id}`, JSON.stringify(profile));
+  } catch {
+    // Cache opcional: si falla, la app sigue funcionando con Supabase.
   }
 }
 
@@ -123,10 +145,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data = retry.data;
     }
 
-    setProfile({
+    const nextProfile = {
       ...data,
       role: parseRole(data.role),
-    } as Profile);
+    } as Profile;
+    setProfile(nextProfile);
+    void writeCachedProfile(nextProfile);
     return true;
   }, []);
 
@@ -208,6 +232,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!mounted) return;
 
         if (currentSession?.user) {
+          const cachedProfile = await readCachedProfile(currentSession.user.id);
+          if (cachedProfile && mounted) {
+            setSession(currentSession);
+            setProfile(cachedProfile);
+            setProfileResolution('done');
+          }
+
           const { error: userErr } = await supabase.auth.getUser();
           if (userErr && isInvalidRefreshSessionError(userErr)) {
             await clearLocalAuthSession();
@@ -217,6 +248,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfileResolution('idle');
             setPasswordRecovery(false);
           } else {
+            if (cachedProfile) {
+              setInitializing(false);
+              void hydrateAuthenticatedUser(currentSession);
+              return;
+            }
             await hydrateAuthenticatedUser(currentSession);
           }
         } else {

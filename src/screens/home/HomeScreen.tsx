@@ -27,6 +27,7 @@ import { supabase } from '../../config/supabase';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { useAuth } from '../../context/AuthContext';
 import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../../utils/imageUrls';
+import { RemoteImage } from '../../components/RemoteImage';
 
 const { width } = Dimensions.get('window');
 const MODAL_IMAGE_SIZE = Math.min(width - 24, 420);
@@ -228,8 +229,10 @@ export default function HomeScreen({ navigation }: any) {
               }
               activeOpacity={0.85}
             >
-              <Image
-                source={barber.avatarUrl ? { uri: optimizeSupabaseImageUrl(barber.avatarUrl, { width: 180, height: 180, quality: 78 }) } : DEFAULT_BARBER_AVATAR}
+              <RemoteImage
+                uri={barber.avatarUrl}
+                fallbackSource={DEFAULT_BARBER_AVATAR}
+                optimize={{ width: 180, height: 180, quality: 78 }}
                 style={[styles.avatar, !barber.available && { opacity: 0.5 }]}
               />
               <Text style={styles.barberName}>{barber.name}</Text>
@@ -278,7 +281,11 @@ export default function HomeScreen({ navigation }: any) {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.secondCarousel}>
               {secondCarouselSources.map((source, index) => (
                 <View key={`promo-slide-${index}`} style={styles.promoCard}>
-                  <Image source={source} style={styles.promoImage} resizeMode="cover" />
+                  {typeof source === 'object' && source != null && 'uri' in source ? (
+                    <RemoteImage uri={(source as { uri: string }).uri} style={styles.promoImage} resizeMode="cover" optimize={{ width: 760, quality: 74 }} />
+                  ) : (
+                    <Image source={source} style={styles.promoImage} resizeMode="cover" />
+                  )}
                   {!secondCarouselUrls.length ? (
                     <View style={styles.promoOverlay}>
                       <Text style={styles.promoTitle}>Promoción destacada</Text>
@@ -347,10 +354,12 @@ export default function HomeScreen({ navigation }: any) {
                   <Feather name="image" size={18} color={colors.subtext} />
                   <Text style={styles.galleryFallbackText}>Imagen</Text>
                 </View>
-              ) : (
-                <Image
-                  source={image}
+              ) : typeof image === 'object' && image != null && 'uri' in image ? (
+                <RemoteImage
+                  uri={(image as { uri: string }).uri}
                   style={styles.galleryImage}
+                  resizeMode="cover"
+                  optimize={{ width: 760, quality: 74 }}
                   onError={() =>
                     setGalleryFailed((prev) => {
                       const next = [...prev];
@@ -359,6 +368,8 @@ export default function HomeScreen({ navigation }: any) {
                     })
                   }
                 />
+              ) : (
+                <Image source={image} style={styles.galleryImage} resizeMode="cover" />
               )}
             </TouchableOpacity>
           ))}

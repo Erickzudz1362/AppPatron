@@ -9,9 +9,10 @@ import { BarbersListSkeleton } from '../../components/skeleton/BarbersListSkelet
 import { EmptyState } from '../../components/EmptyState';
 import { useAsyncResource } from '../../hooks/useAsyncResource';
 import { fetchBarbersFull } from '../../api/supabaseData';
-import type { BarberListItem } from '../../api/fallbackData';
+import { DEFAULT_BARBER_AVATAR, type BarberListItem } from '../../api/fallbackData';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { supabase } from '../../config/supabase';
+import { RemoteImage } from '../../components/RemoteImage';
 
 const SPECIALTIES = ['Todos', 'Corte', 'Barba', 'Afeitado', 'Cejas', 'Color'];
 
@@ -93,7 +94,16 @@ export default function BarbersScreen({ navigation, route }: any) {
 
   const renderBarber = ({ item }: { item: BarberListItem }) => (
     <TouchableOpacity style={styles.card} onPress={() => goToDetail(item)} activeOpacity={0.85}>
-      <Image source={item.avatar} style={[styles.avatar, !item.isAvailable && { opacity: 0.55 }]} />
+      {typeof item.avatar === 'object' && item.avatar != null && 'uri' in item.avatar ? (
+        <RemoteImage
+          uri={(item.avatar as { uri: string }).uri}
+          fallbackSource={DEFAULT_BARBER_AVATAR}
+          optimize={{ width: 180, height: 180, quality: 78 }}
+          style={[styles.avatar, !item.isAvailable && { opacity: 0.55 }]}
+        />
+      ) : (
+        <Image source={item.avatar} style={[styles.avatar, !item.isAvailable && { opacity: 0.55 }]} />
+      )}
       <View style={styles.infoWrap}>
         <View style={styles.rowBetween}>
           <Text style={styles.name}>{item.name}</Text>

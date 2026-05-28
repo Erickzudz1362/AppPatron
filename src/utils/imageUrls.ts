@@ -25,6 +25,11 @@ export function optimizeSupabaseImageUrl(url: string | null | undefined, options
   return `${base.replace(PUBLIC_OBJECT_SEGMENT, PUBLIC_RENDER_SEGMENT)}?${params.toString()}`;
 }
 
+export function originalSupabaseImageUrl(url: string | null | undefined) {
+  if (!url || typeof url !== 'string') return url ?? '';
+  return url.trim().replace(PUBLIC_RENDER_SEGMENT, PUBLIC_OBJECT_SEGMENT);
+}
+
 export function prefetchImageUrls(urls: Array<string | null | undefined>) {
   urls
     .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))

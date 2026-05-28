@@ -3,6 +3,7 @@ import { View, ScrollView, Image, StyleSheet, ImageSourcePropType, useWindowDime
 import { supabase } from '../config/supabase';
 import { useAppTheme } from '../theme/ThemeProvider';
 import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../utils/imageUrls';
+import { RemoteImage } from './RemoteImage';
 
 const FALLBACK_BANNERS: ImageSourcePropType[] = [
   require('../../assets/banners/banner1.jpg'),
@@ -90,19 +91,25 @@ export default function PromoCarousel() {
       >
         {banners.map((img, i) => (
           <View key={i} style={[styles.slideFrame, { width: containerWidth, backgroundColor: colors.card }]}>
-            <Image
-              source={failed[i] ? FALLBACK_BANNERS[i] : img}
-              onError={() => {
-                setFailed((prev) => {
-                  if (prev[i]) return prev;
-                  const copy = [...prev];
-                  copy[i] = true;
-                  return copy;
-                });
-              }}
-              style={styles.slideImg}
-              resizeMode="contain"
-            />
+            {typeof img === 'object' && img != null && 'uri' in img && !failed[i] ? (
+              <RemoteImage
+                uri={(img as { uri: string }).uri}
+                fallbackSource={FALLBACK_BANNERS[i]}
+                style={styles.slideImg}
+                resizeMode="contain"
+                optimize={{ width: 900, quality: 76, resize: 'contain' }}
+                onError={() => {
+                  setFailed((prev) => {
+                    if (prev[i]) return prev;
+                    const copy = [...prev];
+                    copy[i] = true;
+                    return copy;
+                  });
+                }}
+              />
+            ) : (
+              <Image source={FALLBACK_BANNERS[i]} style={styles.slideImg} resizeMode="contain" />
+            )}
           </View>
         ))}
       </ScrollView>
