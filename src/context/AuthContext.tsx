@@ -52,6 +52,27 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function timeout(ms: number): Promise<'timeout'> {
+  return new Promise((resolve) => setTimeout(() => resolve('timeout'), ms));
+}
+
+function buildTemporaryProfileFromSession(nextSession: Session): Profile {
+  const meta = (nextSession.user.user_metadata || {}) as Record<string, unknown>;
+  const metaName = typeof meta.name === 'string' ? meta.name.trim() : '';
+  const emailName = nextSession.user.email?.split('@')[0]?.trim() ?? '';
+  const phone = typeof meta.phone === 'string' && meta.phone.trim() ? meta.phone.trim() : null;
+
+  return {
+    id: nextSession.user.id,
+    role: 'client',
+    name: metaName || emailName || 'Cliente',
+    phone,
+    photo_url: null,
+    status: 'active',
+    push_tokens: [],
+  };
+}
+
 async function syncPushTokenToProfile(userId: string, current: string[] | null | undefined): Promise<void> {
   const token = await registerPushToken();
   if (!token) return;
@@ -176,7 +197,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      if (hydratingUserIdRef.current === nextSession.user.id) {
+      if (
+        hydratingUserIdRef.current === nextSession.user.id &&
+        profileRef.current?.id === nextSession.user.id
+      ) {
         return;
       }
 
@@ -458,7 +482,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const {
           data: { session: currentSession },
         } = await supabase.auth.getSession();
-        await hydrateAuthenticatedUser(currentSession);
+        if (!currentSession?.user) {
+          throw new Error('No se pudo iniciar sesion. Intenta nuevamente.');
+        }
+
+        setSession(currentSession);
+
+        const cachedProfile = await readCachedProfile(currentSession.user.id);
+        if (cachedProfile) {
+          setProfile(cachedProfile);
+          setProfileResolution('done');
+          void hydrateAuthenticatedUser(currentSession);
+          return;
+        }
+
+        const hydrated = await Promise.race([
+          hydrateAuthenticatedUser(currentSession).then(() => 'done' as const),
+          timeout(3500),
+        ]);
+
+        if (hydrated === 'timeout' && profileRef.current?.id !== currentSession.user.id) {
+          const temporaryProfile = buildTemporaryProfileFromSession(currentSession);
+          setProfile(temporaryProfile);
+          setProfileResolution('done');
+        }
       } finally {
         handlingPasswordSignInRef.current = false;
       }

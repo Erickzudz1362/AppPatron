@@ -27,7 +27,18 @@ export function optimizeSupabaseImageUrl(url: string | null | undefined, options
 
 export function originalSupabaseImageUrl(url: string | null | undefined) {
   if (!url || typeof url !== 'string') return url ?? '';
-  return url.trim().replace(PUBLIC_RENDER_SEGMENT, PUBLIC_OBJECT_SEGMENT);
+  const original = url.trim().replace(PUBLIC_RENDER_SEGMENT, PUBLIC_OBJECT_SEGMENT);
+  const [base, existingQuery = ''] = original.split('?');
+  if (!existingQuery) return base;
+
+  const params = new URLSearchParams(existingQuery);
+  params.delete('width');
+  params.delete('height');
+  params.delete('quality');
+  params.delete('resize');
+
+  const nextQuery = params.toString();
+  return nextQuery ? `${base}?${nextQuery}` : base;
 }
 
 export function prefetchImageUrls(urls: Array<string | null | undefined>) {

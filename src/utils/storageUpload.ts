@@ -35,7 +35,7 @@ export async function pickImageFromGallery(): Promise<ImagePicker.ImagePickerAss
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['images'],
     allowsEditing: true,
-    quality: 0.9,
+    quality: 0.75,
   });
 
   if (result.canceled || !result.assets?.length) return null;
