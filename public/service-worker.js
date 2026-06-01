@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-patron-pwa-v5';
+const CACHE_NAME = 'el-patron-pwa-v6';
 const CORE_ASSETS = [
   '/',
   '/manifest.webmanifest',
@@ -78,5 +78,37 @@ self.addEventListener('fetch', (event) => {
         return response;
       })
       .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/')))
+  );
+});
+
+self.addEventListener('push', (event) => {
+  const payload = event.data?.json?.() ?? {};
+  const title = payload.title || 'El Patrón';
+  const body = payload.body || payload.message || 'Tienes una novedad en la app.';
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      tag: payload.tag || 'el-patron-push',
+      renotify: true,
+      data: payload.data || { url: '/' },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => client.url.includes(self.location.origin));
+      if (existing) {
+        existing.focus();
+        return existing.navigate(targetUrl).catch(() => undefined);
+      }
+      return self.clients.openWindow(targetUrl);
+    })
   );
 });

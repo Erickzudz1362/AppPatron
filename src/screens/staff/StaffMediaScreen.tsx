@@ -150,6 +150,7 @@ export default function StaffMediaScreen({ navigation }: any) {
       return;
     }
 
+    await loadMedia();
     setDialog({
       title: 'Guardado',
       message: value
@@ -387,6 +388,12 @@ export default function StaffMediaScreen({ navigation }: any) {
 
         <View style={styles.card}>
           <Text style={styles.h}>Promociones de la semana</Text>
+          <View style={[styles.statusPill, showSecondCarousel ? styles.statusOn : styles.statusOff]}>
+            <Feather name={showSecondCarousel ? 'eye' : 'eye-off'} size={14} color={showSecondCarousel ? '#fff' : colors.subtext} />
+            <Text style={[styles.statusText, { color: showSecondCarousel ? '#fff' : colors.subtext }]}>
+              {showSecondCarousel ? 'Visible en el inicio' : 'Oculto para clientes'}
+            </Text>
+          </View>
           <View style={styles.switchRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.t}>Mostrar segundo carrusel en el inicio</Text>
@@ -604,6 +611,19 @@ function createStyles(colors: { primary: string; background: string; card: strin
       textAlignVertical: 'top',
     },
     switchRow: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+    statusPill: {
+      alignSelf: 'flex-start',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      borderRadius: 999,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      marginBottom: 10,
+    },
+    statusOn: { backgroundColor: colors.primary },
+    statusOff: { backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border },
+    statusText: { fontSize: 12, fontWeight: '800' },
     horizontalList: { marginTop: 10 },
     thumbCard: { marginRight: 10, position: 'relative' },
     thumb: { width: 140, height: 95, borderRadius: 12, backgroundColor: colors.border },

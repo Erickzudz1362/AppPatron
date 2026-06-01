@@ -11,6 +11,7 @@ import { Feather } from '@expo/vector-icons';
 import { AuthProvider } from './src/context/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { ThemeProvider, useAppTheme } from './src/theme/ThemeProvider';
+import { PwaInstallPrompt } from './src/components/PwaInstallPrompt';
 
 setNotificationHandler({
   handleNotification: async () => ({
@@ -26,6 +27,7 @@ function ThemedAppShell() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <RootNavigator />
+      <PwaInstallPrompt />
     </View>
   );
 }

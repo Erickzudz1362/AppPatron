@@ -123,20 +123,32 @@ export default function HomeScreen({ navigation }: any) {
   const openLink = (url: string) => Linking.openURL(url);
 
   useEffect(() => {
+    if (!showSecondCarousel) {
+      setSecondCarouselUrls([]);
+      return;
+    }
     void loadSecondCarousel();
-  }, [loadSecondCarousel]);
+  }, [loadSecondCarousel, showSecondCarousel]);
 
   useFocusEffect(
     React.useCallback(() => {
       void refreshSilently();
-      void loadSecondCarousel();
-    }, [loadSecondCarousel, refreshSilently])
+      if (showSecondCarousel) {
+        void loadSecondCarousel();
+      } else {
+        setSecondCarouselUrls([]);
+      }
+    }, [loadSecondCarousel, refreshSilently, showSecondCarousel])
   );
 
   useEffect(() => {
     const refreshSoon = () => {
       void refreshSilently();
-      void loadSecondCarousel();
+      if (showSecondCarousel) {
+        void loadSecondCarousel();
+      } else {
+        setSecondCarouselUrls([]);
+      }
     };
 
     const homeChannel = supabase
@@ -150,7 +162,7 @@ export default function HomeScreen({ navigation }: any) {
     return () => {
       void supabase.removeChannel(homeChannel);
     };
-  }, [loadSecondCarousel, refreshSilently]);
+  }, [loadSecondCarousel, refreshSilently, showSecondCarousel]);
 
   const secondCarouselSources: ImageSourcePropType[] = useMemo(
     () => secondCarouselUrls.map((url) => ({ uri: url })),

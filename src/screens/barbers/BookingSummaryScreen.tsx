@@ -124,65 +124,7 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
       }
 
       const apptId = data?.id as string | undefined;
-      if (apptId && selectedDay?.key && selectedSlot?.label) {
-        const at = new Date(`${selectedDay.key}T${selectedSlot.label}:00`);
-        if (!Number.isNaN(at.getTime())) {
-          await scheduleClientAppointmentReminder({
-            appointmentId: apptId,
-            at,
-            barberName: barber.name,
-            servicesLabel: selectedServices.map((s) => s.name).join(' + '),
-          });
-        }
-      }
-
-      await showLocalNoticeNotification(
-        'Reserva creada',
-        `${selectedServices.map((s) => s.name).join(' + ')} el ${selectedDay.label} a las ${selectedSlot.label}.`
-      );
-
       const servicesLabel = selectedServices.map((s) => s.name).join(' + ');
-      const { data: barberRow } = await supabase.from('barbers').select('user_id').eq('id', barber.id).maybeSingle();
-      const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin');
-      const notificationRows = [
-        {
-          type: 'sistema',
-          title: 'Reserva creada',
-          message: `Tu reserva de ${servicesLabel} fue registrada para el ${selectedDay.label} a las ${selectedSlot.label}.`,
-          target_user_id: uid,
-          is_active: true,
-        },
-        barberRow?.user_id
-          ? {
-              type: 'sistema',
-              title: 'Nueva reserva',
-              message: `Tienes una nueva reserva de ${servicesLabel} para el ${selectedDay.label} a las ${selectedSlot.label}.`,
-              target_user_id: barberRow.user_id,
-              is_active: true,
-            }
-          : null,
-        ...((admins ?? []) as { id: string }[]).map((admin) => ({
-          type: 'sistema',
-          title: 'Nueva reserva',
-          message: `Se registro una nueva reserva con ${barber.name} para el ${selectedDay.label} a las ${selectedSlot.label}.`,
-          target_user_id: admin.id,
-          is_active: true,
-        })),
-      ].filter(Boolean);
-
-      if (notificationRows.length) {
-        await supabase.from('notifications').insert(notificationRows as never);
-      }
-
-      await triggerBookingPush({
-        kind: 'reservation_created',
-        clientId: uid,
-        barberId: barber.id,
-        barberName: barber.name,
-        servicesLabel,
-        dayLabel: selectedDay.label,
-        slotLabel: selectedSlot.label,
-      });
 
       navigation.replace('BookingSuccess', {
         appointmentId: data?.id,
@@ -193,6 +135,71 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
         durationMin,
         finalTotal: resolvedTotal,
       });
+
+      void (async () => {
+        try {
+          if (apptId && selectedDay?.key && selectedSlot?.label) {
+            const at = new Date(`${selectedDay.key}T${selectedSlot.label}:00`);
+            if (!Number.isNaN(at.getTime())) {
+              await scheduleClientAppointmentReminder({
+                appointmentId: apptId,
+                at,
+                barberName: barber.name,
+                servicesLabel,
+              });
+            }
+          }
+
+          await showLocalNoticeNotification(
+            'Reserva creada',
+            `${servicesLabel} el ${selectedDay.label} a las ${selectedSlot.label}.`
+          );
+
+          const { data: barberRow } = await supabase.from('barbers').select('user_id').eq('id', barber.id).maybeSingle();
+          const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin');
+          const notificationRows = [
+            {
+              type: 'sistema',
+              title: 'Reserva creada',
+              message: `Tu reserva de ${servicesLabel} fue registrada para el ${selectedDay.label} a las ${selectedSlot.label}.`,
+              target_user_id: uid,
+              is_active: true,
+            },
+            barberRow?.user_id
+              ? {
+                  type: 'sistema',
+                  title: 'Nueva reserva',
+                  message: `Tienes una nueva reserva de ${servicesLabel} para el ${selectedDay.label} a las ${selectedSlot.label}.`,
+                  target_user_id: barberRow.user_id,
+                  is_active: true,
+                }
+              : null,
+            ...((admins ?? []) as { id: string }[]).map((admin) => ({
+              type: 'sistema',
+              title: 'Nueva reserva',
+              message: `Se registro una nueva reserva con ${barber.name} para el ${selectedDay.label} a las ${selectedSlot.label}.`,
+              target_user_id: admin.id,
+              is_active: true,
+            })),
+          ].filter(Boolean);
+
+          if (notificationRows.length) {
+            await supabase.from('notifications').insert(notificationRows as never);
+          }
+
+          await triggerBookingPush({
+            kind: 'reservation_created',
+            clientId: uid,
+            barberId: barber.id,
+            barberName: barber.name,
+            servicesLabel,
+            dayLabel: selectedDay.label,
+            slotLabel: selectedSlot.label,
+          });
+        } catch {
+          // La reserva ya fue creada; las notificaciones no deben bloquear ni duplicar el pago.
+        }
+      })();
     } finally {
       savingRef.current = false;
       setSaving(false);

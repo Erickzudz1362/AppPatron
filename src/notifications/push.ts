@@ -9,6 +9,7 @@ import scheduleNotificationAsync from 'expo-notifications/build/scheduleNotifica
 import getAllScheduledNotificationsAsync from 'expo-notifications/build/getAllScheduledNotificationsAsync';
 import cancelScheduledNotificationAsync from 'expo-notifications/build/cancelScheduledNotificationAsync';
 import { SchedulableTriggerInputTypes } from 'expo-notifications/build/Notifications.types';
+import { showWebNotification } from '../pwa/webPwa';
 
 export async function ensureNotificationPermissions(): Promise<boolean> {
   const current = await getPermissionsAsync();
@@ -39,6 +40,11 @@ export async function registerPushToken(): Promise<string | null> {
 }
 
 export async function showLocalNoticeNotification(title: string, body: string): Promise<void> {
+  if (Platform.OS === 'web') {
+    await showWebNotification(title, body);
+    return;
+  }
+
   await scheduleNotificationAsync({
     content: { title, body, sound: true },
     trigger: null,
