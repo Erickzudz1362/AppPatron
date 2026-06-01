@@ -172,6 +172,7 @@ export default function StaffBarbersScreen({ navigation }: any) {
         bucket: BARBER_PHOTOS_BUCKET,
         path,
         contentType: asset.mimeType ?? null,
+        maxWidth: 800,
       });
       setPhotoUrl(publicUrl);
     } catch (error) {

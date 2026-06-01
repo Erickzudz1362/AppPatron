@@ -114,6 +114,7 @@ export default function EditProfileScreen({ navigation }: { navigation: { goBack
         bucket: BARBER_PHOTOS_BUCKET,
         path,
         contentType: asset.mimeType ?? 'image/jpeg',
+        maxWidth: 800,
       });
 
       setCustomPhotoUrl(`${uploadedUrl}?v=${Date.now()}`);

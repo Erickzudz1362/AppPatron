@@ -205,6 +205,7 @@ export default function StaffMediaScreen({ navigation }: any) {
         bucket: PROMO_CAROUSEL_BUCKET,
         path: targetPath,
         contentType: asset.mimeType ?? 'image/jpeg',
+        maxWidth: 1600,
       });
 
       await loadMedia();
@@ -243,6 +244,7 @@ export default function StaffMediaScreen({ navigation }: any) {
         bucket: PROMO_CAROUSEL_BUCKET,
         path: targetPath,
         contentType: asset.mimeType ?? 'image/jpeg',
+        maxWidth: 512,
       });
 
       setAvatarRefreshKey(Date.now());
@@ -290,6 +292,7 @@ export default function StaffMediaScreen({ navigation }: any) {
         bucket: PROMO_CAROUSEL_BUCKET,
         path: targetPath,
         contentType: asset.mimeType ?? 'image/jpeg',
+        maxWidth: 1600,
       });
 
       await loadMedia();

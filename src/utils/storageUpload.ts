@@ -1,5 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { supabase } from '../config/supabase';
 
 export const BARBER_PHOTOS_BUCKET = 'barber-photos';
@@ -47,8 +48,27 @@ export async function uploadImageFromUri(params: {
   bucket: string;
   path: string;
   contentType?: string | null;
+  maxWidth?: number;
 }): Promise<string> {
-  const base64 = await FileSystem.readAsStringAsync(params.uri, {
+  let uploadUri = params.uri;
+  let contentType = params.contentType ?? 'image/jpeg';
+
+  try {
+    const optimized = await ImageManipulator.manipulateAsync(
+      params.uri,
+      params.maxWidth ? [{ resize: { width: params.maxWidth } }] : [],
+      {
+        compress: 0.78,
+        format: ImageManipulator.SaveFormat.WEBP,
+      }
+    );
+    uploadUri = optimized.uri;
+    contentType = 'image/webp';
+  } catch {
+    // Si el dispositivo no puede convertir a WebP, subimos la imagen original comprimida por el picker.
+  }
+
+  const base64 = await FileSystem.readAsStringAsync(uploadUri, {
     encoding: 'base64',
   });
 
@@ -56,7 +76,7 @@ export async function uploadImageFromUri(params: {
 
   const { error } = await supabase.storage.from(params.bucket).upload(params.path, bytes, {
     upsert: true,
-    contentType: params.contentType ?? 'image/jpeg',
+    contentType,
   });
 
   if (error) throw error;

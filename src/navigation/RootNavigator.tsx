@@ -1,5 +1,6 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useEffect } from 'react';
+import { BackHandler, Platform } from 'react-native';
+import { createNavigationContainerRef, NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import SplashScreen from '../screens/SplashScreen';
@@ -18,10 +19,49 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme/ThemeProvider';
 
 const Stack = createNativeStackNavigator();
+const navigationRef = createNavigationContainerRef();
+
+function AppNavigationContainer({ children }: { children: React.ReactNode }) {
+  const { navTheme } = useAppTheme();
+
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (navigationRef.isReady() && navigationRef.canGoBack()) {
+        navigationRef.goBack();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+
+    window.history.replaceState({ elPatron: true }, '', window.location.href);
+    window.history.pushState({ elPatron: true }, '', window.location.href);
+
+    const onPopState = () => {
+      if (navigationRef.isReady() && navigationRef.canGoBack()) {
+        navigationRef.goBack();
+      }
+      window.history.pushState({ elPatron: true }, '', window.location.href);
+    };
+
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
+  return (
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
+      {children}
+    </NavigationContainer>
+  );
+}
 
 export function RootNavigator() {
   const { initializing, session, profile, profileLoadPending, role, passwordRecovery } = useAuth();
-  const { navTheme, colors } = useAppTheme();
+  const { colors } = useAppTheme();
 
   const stackScreenOptions = {
     headerShown: false,
@@ -34,50 +74,50 @@ export function RootNavigator() {
 
   if (!session) {
     return (
-      <NavigationContainer theme={navTheme}>
+      <AppNavigationContainer>
         <Stack.Navigator initialRouteName="Login" screenOptions={{ headerShown: false }}>
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Register" component={RegisterScreen} />
           <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
           <Stack.Screen name="VerifyCode" component={VerifyCodeScreen} />
         </Stack.Navigator>
-      </NavigationContainer>
+      </AppNavigationContainer>
     );
   }
 
   if (passwordRecovery) {
     return (
-      <NavigationContainer theme={navTheme}>
+      <AppNavigationContainer>
         <Stack.Navigator screenOptions={stackScreenOptions}>
           <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         </Stack.Navigator>
-      </NavigationContainer>
+      </AppNavigationContainer>
     );
   }
 
   if (!profile) {
     if (profileLoadPending) {
       return (
-        <NavigationContainer theme={navTheme}>
+        <AppNavigationContainer>
           <Stack.Navigator screenOptions={stackScreenOptions}>
             <Stack.Screen name="AppBoot" component={AppBootSkeletonScreen} />
           </Stack.Navigator>
-        </NavigationContainer>
+        </AppNavigationContainer>
       );
     }
     return (
-      <NavigationContainer theme={navTheme}>
+      <AppNavigationContainer>
         <Stack.Navigator screenOptions={stackScreenOptions}>
           <Stack.Screen name="SessionWithoutProfile" component={SessionWithoutProfileScreen} />
         </Stack.Navigator>
-      </NavigationContainer>
+      </AppNavigationContainer>
     );
   }
 
   const isStaff = role === 'barber' || role === 'admin';
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <AppNavigationContainer>
       <Stack.Navigator screenOptions={stackScreenOptions}>
         {isStaff ? (
           role === 'admin' ? (
@@ -89,6 +129,6 @@ export function RootNavigator() {
           <Stack.Screen name="Main" component={MainTabs} />
         )}
       </Stack.Navigator>
-    </NavigationContainer>
+    </AppNavigationContainer>
   );
 }

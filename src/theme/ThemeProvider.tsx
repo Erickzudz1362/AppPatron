@@ -1,5 +1,6 @@
 // src/theme/ThemeProvider.tsx
-import React, { createContext, useContext, useMemo, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DefaultTheme, DarkTheme, Theme as NavTheme } from '@react-navigation/native';
 import { AppColors, DARK_COLORS, LIGHT_COLORS } from './palette';
 
@@ -17,8 +18,22 @@ const ThemeContext = createContext<ThemeContextType>({
   navTheme: DefaultTheme, // 👈 así ya trae fonts, spacing, etc.
 });
 
+const THEME_STORAGE_KEY = 'el_patron_theme_mode';
+
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
   const [isDark, setIsDark] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void AsyncStorage.getItem(THEME_STORAGE_KEY).then((value) => {
+      if (!mounted) return;
+      if (value === 'dark') setIsDark(true);
+      if (value === 'light') setIsDark(false);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const colors = useMemo<AppColors>(() => (isDark ? DARK_COLORS : LIGHT_COLORS), [isDark]);
 
@@ -39,7 +54,12 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, [isDark, colors]);
 
-  const toggleTheme = () => setIsDark(prev => !prev);
+  const toggleTheme = () =>
+    setIsDark((prev) => {
+      const next = !prev;
+      void AsyncStorage.setItem(THEME_STORAGE_KEY, next ? 'dark' : 'light');
+      return next;
+    });
 
   const value = useMemo(
     () => ({ isDark, colors, toggleTheme, navTheme }),
