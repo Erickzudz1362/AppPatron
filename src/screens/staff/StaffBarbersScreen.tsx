@@ -54,6 +54,25 @@ function buildSchedulePayload(schedule: ScheduleState): Record<string, { start: 
   }, {} as Record<string, { start: string; end: string } | null>);
 }
 
+function parseSchedulePayload(value: unknown): ScheduleState {
+  const next: ScheduleState = { ...DEFAULT_SCHEDULE };
+  if (!value || typeof value !== 'object') return next;
+  const raw = value as Record<string, { start?: unknown; end?: unknown } | null>;
+  DAYS.forEach((day) => {
+    const item = raw[day.key];
+    if (!item) {
+      next[day.key] = { ...next[day.key], enabled: false };
+      return;
+    }
+    next[day.key] = {
+      enabled: true,
+      start: typeof item.start === 'string' ? item.start : next[day.key].start,
+      end: typeof item.end === 'string' ? item.end : next[day.key].end,
+    };
+  });
+  return next;
+}
+
 async function extractFunctionError(error: unknown): Promise<string> {
   if (!error || typeof error !== 'object') return 'No se pudo completar la accion.';
 
@@ -78,6 +97,7 @@ export default function StaffBarbersScreen({ navigation }: any) {
 
   const [rows, setRows] = useState<BarberRow[]>([]);
   const [createMode, setCreateMode] = useState<'new_user' | 'existing_user'>('new_user');
+  const [editingBarberId, setEditingBarberId] = useState<string | null>(null);
   const [userId, setUserId] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -104,6 +124,8 @@ export default function StaffBarbersScreen({ navigation }: any) {
     setPhotoUrl('');
     setSchedule(DEFAULT_SCHEDULE);
     setSelectedServices([]);
+    setEditingBarberId(null);
+    setCreateMode('new_user');
   };
 
   const load = useCallback(async () => {
@@ -200,6 +222,38 @@ export default function StaffBarbersScreen({ navigation }: any) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPhotoUrl = photoUrl.trim();
     const baseSchedule = buildSchedulePayload(schedule);
+
+    if (editingBarberId) {
+      if (!cleanUserId) {
+        setDialog({ title: 'Falta el usuario', message: 'No se encontro el usuario del barbero.' });
+        return;
+      }
+      setSaving(true);
+      try {
+        const { error: profileError } = await supabase.from('profiles').update({
+          name: cleanName || null,
+          photo_url: cleanPhotoUrl || null,
+        }).eq('id', cleanUserId);
+        if (profileError) {
+          setDialog({ title: 'No se pudo actualizar el perfil', message: profileError.message });
+          return;
+        }
+        const { error: barberError } = await supabase.from('barbers').update({
+          specialties: selectedServices,
+          base_schedule: baseSchedule,
+        }).eq('id', editingBarberId);
+        if (barberError) {
+          setDialog({ title: 'No se pudo actualizar el barbero', message: barberError.message });
+          return;
+        }
+        resetForm();
+        setDialog({ title: 'Barbero actualizado', message: 'Los cambios fueron guardados correctamente.' });
+        void load();
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     if (createMode === 'new_user') {
       if (!cleanEmail) {
@@ -316,22 +370,43 @@ export default function StaffBarbersScreen({ navigation }: any) {
     void load();
   };
 
+  const startEditing = (row: BarberRow) => {
+    setEditingBarberId(row.id);
+    setCreateMode('existing_user');
+    setUserId(row.user_id);
+    setName(row.profile_name ?? '');
+    setPhotoUrl(row.profile_photo_url ?? '');
+    setSelectedServices(row.specialties ?? []);
+    setSchedule(parseSchedulePayload(row.base_schedule));
+  };
+
+  const removeBarber = async (row: BarberRow) => {
+    const { error } = await supabase.from('barbers').delete().eq('id', row.id);
+    if (error) {
+      setDialog({ title: 'No se pudo eliminar', message: error.message });
+      return;
+    }
+    if (editingBarberId === row.id) resetForm();
+    setDialog({ title: 'Barbero eliminado', message: 'El barbero fue eliminado de la app.' });
+    void load();
+  };
+
   const renderHeader = () => (
     <>
       <StaffScreenHeader title="Barberos" navigation={navigation} />
       {isAdmin ? (
         <View style={styles.form}>
-          <Text style={styles.formTitle}>Nuevo barbero</Text>
+          <Text style={styles.formTitle}>{editingBarberId ? 'Editar barbero' : 'Nuevo barbero'}</Text>
           <Text style={styles.formHelper}>Completa los datos de acceso, la foto y el horario del barbero.</Text>
 
-          <View style={styles.chipsWrap}>
+          {!editingBarberId ? <View style={styles.chipsWrap}>
             <TouchableOpacity style={[styles.chip, createMode === 'new_user' && styles.chipActive]} onPress={() => setCreateMode('new_user')}>
               <Text style={[styles.chipTxt, createMode === 'new_user' && styles.chipTxtActive]}>Nuevo usuario</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.chip, createMode === 'existing_user' && styles.chipActive]} onPress={() => setCreateMode('existing_user')}>
               <Text style={[styles.chipTxt, createMode === 'existing_user' && styles.chipTxtActive]}>Usuario existente</Text>
             </TouchableOpacity>
-          </View>
+          </View> : null}
 
           {createMode === 'new_user' ? (
             <>
@@ -444,8 +519,13 @@ export default function StaffBarbersScreen({ navigation }: any) {
           })}
 
           <TouchableOpacity style={[styles.btn, (saving || uploadingPhoto) && styles.btnDisabled]} onPress={createBarber} disabled={saving || uploadingPhoto}>
-            <Text style={styles.btnTxt}>{saving ? 'Guardando...' : 'Guardar barbero'}</Text>
+            <Text style={styles.btnTxt}>{saving ? 'Guardando...' : editingBarberId ? 'Guardar cambios' : 'Guardar barbero'}</Text>
           </TouchableOpacity>
+          {editingBarberId ? (
+            <TouchableOpacity style={styles.secondaryBtn} onPress={resetForm}>
+              <Text style={styles.secondaryBtnTxt}>Cancelar edicion</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : (
         <Text style={styles.note}>Como barbero, aqui solo puedes revisar la lista.</Text>
@@ -470,6 +550,16 @@ export default function StaffBarbersScreen({ navigation }: any) {
               <Text style={styles.meta}>{item.active ? 'Visible en la app' : 'Oculto en la app'}</Text>
               <Switch value={item.active} disabled={!isAdmin} onValueChange={(value) => toggleActive(item, value)} trackColor={{ false: colors.border, true: colors.primary }} />
             </View>
+            {isAdmin ? (
+              <View style={styles.cardActions}>
+                <TouchableOpacity style={styles.cardActionBtn} onPress={() => startEditing(item)}>
+                  <Text style={styles.cardActionTxt}>Editar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.cardActionBtn, styles.cardDeleteBtn]} onPress={() => void removeBarber(item)}>
+                  <Text style={styles.cardActionTxt}>Eliminar</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
         ))}
       </ScrollView>
@@ -521,11 +611,17 @@ function createStyles(colors: { primary: string; background: string; card: strin
     btn: { height: 48, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 6 },
     btnDisabled: { opacity: 0.6 },
     btnTxt: { color: '#fff', fontWeight: '800' },
+    secondaryBtn: { height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+    secondaryBtnTxt: { color: colors.text, fontWeight: '700' },
     card: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 12, marginBottom: 10, backgroundColor: colors.card },
     cardTop: { flexDirection: 'row', gap: 12, alignItems: 'center' },
     thumb: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.mutedBg },
     name: { color: colors.text, fontWeight: '800', fontSize: 16 },
     meta: { color: colors.subtext, marginTop: 2 },
     row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+    cardActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+    cardActionBtn: { flex: 1, height: 40, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+    cardDeleteBtn: { backgroundColor: '#d64545' },
+    cardActionTxt: { color: '#fff', fontWeight: '800', fontSize: 12 },
   });
 }

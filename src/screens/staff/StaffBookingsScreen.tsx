@@ -19,6 +19,10 @@ type Row = {
   status: string;
   notes: string | null;
   total_price_snapshot: number | null;
+  client_name?: string | null;
+  client_phone?: string | null;
+  client_visit_count?: number | null;
+  barber_name?: string | null;
 };
 
 type ProfileMini = { id: string; name: string | null; phone: string | null; visit_count?: number | null };
@@ -87,6 +91,41 @@ export default function StaffBookingsScreen({ navigation }: any) {
     if (!session?.user?.id) return;
     if (showLoader) setLoading(true);
     try {
+      const rpcParams = {
+        p_date: selectedDate === 'all' ? null : selectedDate,
+        p_status: statusFilter === 'all' ? null : statusFilter,
+        p_barber_id: isAdmin && selectedBarberId !== 'all' ? selectedBarberId : null,
+      };
+      const rpcRes = await supabase.rpc('get_staff_booking_details', rpcParams);
+      if (!rpcRes.error && Array.isArray(rpcRes.data)) {
+        const list = (rpcRes.data as Row[]) ?? [];
+        setRows(list);
+
+        const nextClientMap: Record<string, ProfileMini> = {};
+        const nextBarberMap: Record<string, string> = {};
+        list.forEach((row) => {
+          nextClientMap[row.client_id] = {
+            id: row.client_id,
+            name: row.client_name ?? null,
+            phone: row.client_phone ?? null,
+            visit_count: row.client_visit_count ?? null,
+          };
+          nextBarberMap[row.barber_id] = row.barber_name?.trim() || 'Barbero';
+        });
+        setClientMap(nextClientMap);
+        setBarberNameMap(nextBarberMap);
+
+        if (isAdmin) {
+          const { data: allBarbers } = await supabase.rpc('get_admin_barber_directory');
+          const options = ((allBarbers ?? []) as Array<{ id: string; name: string | null }>).map((barber) => ({
+            id: barber.id,
+            name: barber.name?.trim() || nextBarberMap[barber.id] || 'Barbero',
+          }));
+          setBarberOptions(options);
+        }
+        return;
+      }
+
       let query = supabase
         .from('appointments')
         .select('id, client_id, barber_id, date, time, status, notes, total_price_snapshot')

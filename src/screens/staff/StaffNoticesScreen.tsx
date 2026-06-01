@@ -20,6 +20,7 @@ export default function StaffNoticesScreen({ navigation }: any) {
   const [rows, setRows] = useState<NoticeRow[]>([]);
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -35,26 +36,44 @@ export default function StaffNoticesScreen({ navigation }: any) {
     setRows((data as NoticeRow[]) ?? []);
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const createNotice = async () => {
+  const resetForm = () => {
+    setTitle('');
+    setMessage('');
+    setEditingId(null);
+  };
+
+  const saveNotice = async () => {
     if (!title.trim() || !message.trim()) {
-      setDialog({ title: 'Datos incompletos', message: 'Ingresa título y mensaje.' });
+      setDialog({ title: 'Datos incompletos', message: 'Ingresa titulo y mensaje.' });
       return;
     }
-    const { error } = await supabase.from('notifications').insert({
+
+    const payload = {
       type: 'aviso',
       title: title.trim(),
       message: message.trim(),
       is_active: true,
-    });
+    };
+    const query = editingId
+      ? supabase.from('notifications').update(payload).eq('id', editingId)
+      : supabase.from('notifications').insert(payload);
+    const { error } = await query;
     if (error) {
-      setDialog({ title: 'No se pudo crear', message: error.message });
+      setDialog({ title: editingId ? 'No se pudo actualizar' : 'No se pudo crear', message: error.message });
       return;
     }
-    setTitle('');
-    setMessage('');
+    resetForm();
     void load();
+  };
+
+  const startEditing = (row: NoticeRow) => {
+    setEditingId(row.id);
+    setTitle(row.title ?? '');
+    setMessage(row.message ?? '');
   };
 
   const toggle = async (id: string, active: boolean) => {
@@ -63,27 +82,69 @@ export default function StaffNoticesScreen({ navigation }: any) {
     void load();
   };
 
+  const removeNotice = async (id: string) => {
+    const { error } = await supabase.from('notifications').delete().eq('id', id);
+    if (error) {
+      setDialog({ title: 'No se pudo eliminar', message: error.message });
+      return;
+    }
+    if (editingId === id) resetForm();
+    setDialog({ title: 'Aviso eliminado', message: 'El aviso fue eliminado correctamente.' });
+    void load();
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <StaffScreenHeader title="Avisos" navigation={navigation} />
       <View style={styles.form}>
-        <TextInput style={styles.input} placeholder="Título" placeholderTextColor={colors.subtext} value={title} onChangeText={setTitle} />
-        <TextInput style={[styles.input, { height: 84 }]} multiline placeholder="Mensaje" placeholderTextColor={colors.subtext} value={message} onChangeText={setMessage} />
-        <TouchableOpacity style={styles.btn} onPress={createNotice}>
-          <Text style={styles.btnTxt}>Publicar aviso</Text>
+        <Text style={styles.formTitle}>{editingId ? 'Editar aviso' : 'Nuevo aviso'}</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Titulo"
+          placeholderTextColor={colors.subtext}
+          value={title}
+          onChangeText={setTitle}
+        />
+        <TextInput
+          style={[styles.input, { height: 84 }]}
+          multiline
+          placeholder="Mensaje"
+          placeholderTextColor={colors.subtext}
+          value={message}
+          onChangeText={setMessage}
+        />
+        <TouchableOpacity style={styles.btn} onPress={saveNotice}>
+          <Text style={styles.btnTxt}>{editingId ? 'Guardar cambios' : 'Publicar aviso'}</Text>
         </TouchableOpacity>
+        {editingId ? (
+          <TouchableOpacity style={styles.secondaryBtn} onPress={resetForm}>
+            <Text style={styles.secondaryBtnTxt}>Cancelar edicion</Text>
+          </TouchableOpacity>
+        ) : null}
       </View>
 
       <FlatList
         data={rows}
-        keyExtractor={(i) => i.id}
+        keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <View style={styles.card}>
-            <Text style={styles.name}>{item.title ?? 'Sin título'}</Text>
-            <Text style={styles.meta}>{item.message ?? '—'}</Text>
+            <View style={styles.topRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.name}>{item.title ?? 'Sin titulo'}</Text>
+                <Text style={styles.meta}>{item.message ?? '-'}</Text>
+              </View>
+              <View style={styles.iconRow}>
+                <TouchableOpacity style={styles.iconBtn} onPress={() => startEditing(item)}>
+                  <Text style={styles.iconTxt}>Editar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.iconBtn, styles.deleteBtn]} onPress={() => void removeNotice(item.id)}>
+                  <Text style={styles.iconTxt}>Eliminar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             <View style={styles.row}>
               <Text style={styles.meta}>{item.is_active ? 'Activo' : 'Inactivo'}</Text>
-              <Switch value={!!item.is_active} onValueChange={(v) => toggle(item.id, v)} trackColor={{ false: colors.border, true: colors.primary }} />
+              <Switch value={!!item.is_active} onValueChange={(value) => toggle(item.id, value)} trackColor={{ false: colors.border, true: colors.primary }} />
             </View>
           </View>
         )}
@@ -96,26 +157,32 @@ export default function StaffNoticesScreen({ navigation }: any) {
 function createStyles(colors: { primary: string; background: string; card: string; text: string; subtext: string; border: string }) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background, padding: 16 },
-    title: { color: colors.text, fontSize: 24, fontWeight: '800', marginBottom: 10 },
-    form: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 10, backgroundColor: colors.card, marginBottom: 10 },
+    form: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 14, backgroundColor: colors.card, marginBottom: 12 },
+    formTitle: { color: colors.text, fontWeight: '800', fontSize: 18, marginBottom: 10 },
     input: {
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 10,
-      paddingHorizontal: 10,
+      borderRadius: 12,
+      paddingHorizontal: 12,
       paddingVertical: 10,
-      minHeight: 44,
+      minHeight: 46,
       color: colors.text,
-      marginBottom: 8,
+      marginBottom: 10,
       backgroundColor: colors.background,
       textAlignVertical: 'top',
     },
-    btn: { height: 46, borderRadius: 10, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-    btnTxt: { color: '#fff', fontWeight: '700' },
-    card: { borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, marginBottom: 8, backgroundColor: colors.card },
-    name: { color: colors.text, fontWeight: '700', fontSize: 16 },
-    meta: { color: colors.subtext, marginTop: 2 },
-    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+    btn: { height: 48, borderRadius: 12, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+    btnTxt: { color: '#fff', fontWeight: '800' },
+    secondaryBtn: { height: 44, borderRadius: 12, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+    secondaryBtnTxt: { color: colors.text, fontWeight: '700' },
+    card: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 12, marginBottom: 10, backgroundColor: colors.card },
+    topRow: { flexDirection: 'row', gap: 10, justifyContent: 'space-between', alignItems: 'flex-start' },
+    iconRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' },
+    iconBtn: { borderRadius: 999, backgroundColor: colors.primary, paddingHorizontal: 10, paddingVertical: 7 },
+    deleteBtn: { backgroundColor: '#d64545' },
+    iconTxt: { color: '#fff', fontWeight: '800', fontSize: 11 },
+    name: { color: colors.text, fontWeight: '800', fontSize: 16 },
+    meta: { color: colors.subtext, marginTop: 4 },
+    row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
   });
 }
-

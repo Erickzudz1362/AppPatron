@@ -21,12 +21,9 @@ const warned = new Set<string>();
 const BARBERS_FULL_CACHE_KEY = 'el_patron_barbers_full_v2';
 const BARBERS_FULL_MEMORY_TTL_MS = 15_000;
 const HOME_BUNDLE_CACHE_KEY = 'el_patron_home_bundle_v2';
-const HOME_BUNDLE_MEMORY_TTL_MS = 10_000;
 let barbersFullMemoryCache: BarberListItem[] | null = null;
 let barbersFullMemoryAt = 0;
 let servedPersistedBarbersCache = false;
-let homeBundleMemoryCache: HomeBundle | null = null;
-let homeBundleMemoryAt = 0;
 let servedPersistedHomeBundleCache = false;
 
 function warnOnce(key: string, message: string) {
@@ -193,11 +190,6 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
 }
 
 export async function fetchHomeBundle(): Promise<HomeBundle> {
-  const now = Date.now();
-  if (homeBundleMemoryCache && now - homeBundleMemoryAt < HOME_BUNDLE_MEMORY_TTL_MS) {
-    return homeBundleMemoryCache;
-  }
-
   if (!servedPersistedHomeBundleCache) {
     servedPersistedHomeBundleCache = true;
     const persisted = await readPersistedHomeBundleCache();
@@ -207,8 +199,6 @@ export async function fetchHomeBundle(): Promise<HomeBundle> {
   }
 
   const bundle = await fetchHomeBundleFromNetwork();
-  homeBundleMemoryCache = bundle;
-  homeBundleMemoryAt = Date.now();
   writePersistedHomeBundleCache(bundle);
   return bundle;
 }

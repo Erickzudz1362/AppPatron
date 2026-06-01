@@ -222,12 +222,12 @@ export default function StaffMediaScreen({ navigation }: any) {
   };
 
   const uploadPromoImage = async () => {
-    const path = `${HOME_PROMO_CAROUSEL_FOLDER}/promo-${Date.now()}.jpg`;
+    const path = `${HOME_PROMO_CAROUSEL_FOLDER}/promo-${Date.now()}.webp`;
     await uploadToPath(path, 'La promocion ya esta lista para mostrarse en el inicio.');
   };
 
   const uploadGalleryImage = async () => {
-    const path = `${HOME_GALLERY_FOLDER}/gallery-${Date.now()}.jpg`;
+    const path = `${HOME_GALLERY_FOLDER}/gallery-${Date.now()}.webp`;
     await uploadToPath(path, 'La imagen ya fue agregada a la galeria del inicio.');
   };
 
@@ -277,8 +277,7 @@ export default function StaffMediaScreen({ navigation }: any) {
       const asset = await pickImageFromGallery();
       if (!asset?.uri) return;
 
-      const extension = resolveAssetExtension(asset.mimeType, asset.uri);
-      const targetPath = `${HOME_MAIN_CAROUSEL_FOLDER}/${slot}.${extension}`;
+      const targetPath = `${HOME_MAIN_CAROUSEL_FOLDER}/${slot}.webp`;
       const stalePaths = SUPPORTED_IMAGE_EXTENSIONS
         .map((ext) => `${HOME_MAIN_CAROUSEL_FOLDER}/${slot}.${ext}`)
         .filter((path) => path !== targetPath);
@@ -321,6 +320,31 @@ export default function StaffMediaScreen({ navigation }: any) {
       setDialog({
         title: 'No se pudo eliminar',
         message: explainStorageError(error, 'Error al eliminar la imagen.'),
+      });
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const replacePaymentQr = async () => {
+    try {
+      setBusyKey('payment-qr');
+      const asset = await pickImageFromGallery();
+      if (!asset?.uri) return;
+
+      await uploadImageFromUri({
+        uri: asset.uri,
+        bucket: QR_BUCKET,
+        path: QR_PATH,
+        contentType: asset.mimeType ?? 'image/jpeg',
+        maxWidth: 1200,
+      });
+
+      setDialog({ title: 'QR actualizado', message: 'El QR de pago fue actualizado para toda la app.' });
+    } catch (error) {
+      setDialog({
+        title: 'No se pudo subir el QR',
+        message: explainStorageError(error, 'Error al actualizar el QR.'),
       });
     } finally {
       setBusyKey(null);
@@ -514,8 +538,11 @@ export default function StaffMediaScreen({ navigation }: any) {
 
         <View style={styles.card}>
           <Text style={styles.h}>QR de pago</Text>
-          <Text style={styles.t}>Bucket: {QR_BUCKET}</Text>
-          <Text style={styles.t}>Ruta: {QR_PATH}</Text>
+          <Text style={styles.t}>Este es el QR que se usa en toda la app para pagos.</Text>
+          <TouchableOpacity style={styles.btn} onPress={() => void replacePaymentQr()} disabled={busyKey === 'payment-qr'}>
+            {busyKey === 'payment-qr' ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTxt}>Cambiar QR desde galeria</Text>}
+          </TouchableOpacity>
+          <Text style={styles.small}>Bucket: {QR_BUCKET} / Ruta: {QR_PATH}</Text>
         </View>
 
         <AppDialog visible={!!dialog} title={dialog?.title ?? ''} message={dialog?.message ?? ''} onClose={() => setDialog(null)} />
