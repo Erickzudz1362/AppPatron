@@ -19,10 +19,12 @@ import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../utils/imageUrls'
 
 const warned = new Set<string>();
 const BARBERS_FULL_CACHE_KEY = 'el_patron_barbers_full_v2';
+const HOME_BUNDLE_CACHE_KEY = 'el_patron_home_bundle_v3';
 const BARBERS_FULL_MEMORY_TTL_MS = 15_000;
 let barbersFullMemoryCache: BarberListItem[] | null = null;
 let barbersFullMemoryAt = 0;
 let servedPersistedBarbersCache = false;
+let servedFastHomeCache = false;
 
 function warnOnce(key: string, message: string) {
   if (warned.has(key)) return;
@@ -115,6 +117,28 @@ export type HomeBundle = {
   galleryVisibleCount?: number;
 };
 
+async function readPersistedHomeBundleCache(): Promise<HomeBundle | null> {
+  try {
+    const raw = await AsyncStorage.getItem(HOME_BUNDLE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { items?: HomeBundle };
+    if (!parsed.items?.barbers?.length && !parsed.items?.services?.length) return null;
+    return parsed.items;
+  } catch {
+    return null;
+  }
+}
+
+function writePersistedHomeBundleCache(items: HomeBundle) {
+  void AsyncStorage.setItem(HOME_BUNDLE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), items })).catch(
+    () => undefined
+  );
+}
+
+function wait(ms: number): Promise<'timeout'> {
+  return new Promise((resolve) => setTimeout(() => resolve('timeout'), ms));
+}
+
 async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
   try {
     const [barbers, services, settingsRes, galleryRes] = await Promise.all([
@@ -170,9 +194,25 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
 }
 
 export async function fetchHomeBundle(): Promise<HomeBundle> {
-  // El inicio contiene ajustes administrables (carrusel, textos, galeria).
-  // Siempre leemos fresco para que los cambios del admin se reflejen al instante.
-  return fetchHomeBundleFromNetwork();
+  const network = fetchHomeBundleFromNetwork().then((bundle) => {
+    writePersistedHomeBundleCache(bundle);
+    return bundle;
+  });
+
+  if (!servedFastHomeCache) {
+    const cached = await readPersistedHomeBundleCache();
+    if (cached) {
+      const result = await Promise.race([network, wait(650)]);
+      if (result === 'timeout') {
+        servedFastHomeCache = true;
+        return cached;
+      }
+      servedFastHomeCache = true;
+      return result;
+    }
+  }
+
+  return network;
 }
 
 function mapBarberFullRow(
@@ -428,13 +468,16 @@ export async function fetchNotices(): Promise<NoticeItem[]> {
     data: { session },
   } = await supabase.auth.getSession();
   const uid = session?.user?.id;
+  const userCreatedAt = session?.user?.created_at ? new Date(session.user.created_at).getTime() : 0;
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const visibleFrom = new Date(Math.max(thirtyDaysAgo, userCreatedAt || thirtyDaysAgo)).toISOString();
 
   const { data, error } = await supabase
     .from('notifications')
     .select('id, type, title, message, body, date, created_at, read, link, target_user_id')
     .eq('is_active', true)
     .or(uid ? `target_user_id.is.null,target_user_id.eq.${uid}` : 'target_user_id.is.null')
-    .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+    .gte('created_at', visibleFrom)
     .order('created_at', { ascending: false })
     .limit(50);
 

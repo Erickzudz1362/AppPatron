@@ -23,6 +23,9 @@ export function normalizeErrorMessage(raw: unknown): string {
   if (value.includes('password should be at least')) {
     return 'La contraseña es demasiado corta.';
   }
+  if (value.includes('new password should be different') || value.includes('different from the old password')) {
+    return 'La nueva contraseÃ±a debe ser diferente a la anterior.';
+  }
   if (value.includes('password') && value.includes('uppercase')) {
     return 'La contraseña debe incluir al menos una letra mayúscula.';
   }

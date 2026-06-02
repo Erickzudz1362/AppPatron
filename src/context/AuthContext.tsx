@@ -36,7 +36,7 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
-const SPLASH_MIN_MS = 2000;
+const SPLASH_MIN_MS = 700;
 const PROFILE_CACHE_PREFIX = 'el_patron_profile_';
 
 function isInvalidRefreshSessionError(err: unknown): boolean {

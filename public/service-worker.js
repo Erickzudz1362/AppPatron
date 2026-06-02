@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-patron-pwa-v6';
+const CACHE_NAME = 'el-patron-pwa-v7';
 const CORE_ASSETS = [
   '/',
   '/manifest.webmanifest',
@@ -47,7 +47,7 @@ self.addEventListener('fetch', (event) => {
       caches.match(event.request).then((cached) => {
         const network = fetch(event.request)
           .then((response) => {
-            if (response.ok) {
+            if (response.ok || response.type === 'opaque') {
               const copy = response.clone();
               caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => undefined);
             }
@@ -63,7 +63,19 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match('/').then((cached) => cached || Response.error()))
+      caches.match('/').then((cached) => {
+        const network = fetch(event.request)
+          .then((response) => {
+            if (response.ok) {
+              const copy = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put('/', copy)).catch(() => undefined);
+            }
+            return response;
+          })
+          .catch(() => cached);
+
+        return cached || network;
+      })
     );
     return;
   }

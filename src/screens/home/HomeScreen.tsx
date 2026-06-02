@@ -200,7 +200,7 @@ export default function HomeScreen({ navigation }: any) {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top', 'left', 'right']}>
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
-        contentContainerStyle={{ paddingBottom: tabBarHeight + 24, padding: 16, paddingTop: 8 }}
+        contentContainerStyle={[styles.homeContent, { paddingBottom: tabBarHeight + 24 }]}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.primary} />}
       >
         <View style={styles.header}>
@@ -432,6 +432,13 @@ function createStyles(colors: {
 }) {
   return StyleSheet.create({
     container: { flex: 1 },
+    homeContent: {
+      width: '100%',
+      maxWidth: 760,
+      alignSelf: 'center',
+      padding: 16,
+      paddingTop: 8,
+    },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
     hello: { fontSize: 18, fontWeight: '700', color: colors.text },
     sub: { color: colors.subtext, marginTop: 2 },
