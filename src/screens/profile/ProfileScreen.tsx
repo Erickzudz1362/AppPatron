@@ -36,7 +36,7 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileNav }
   const { width } = useWindowDimensions();
   const gutter = width < 360 ? 12 : width < 400 ? 16 : width < 768 ? 20 : 24;
   const tabBarHeight = useBottomTabBarHeight();
-  const { signOut, profile, session, role, profileLoadPending } = useAuth();
+  const { signOut, profile, session, role, actualRole, setAdminViewRole, profileLoadPending } = useAuth();
 
   const { isDark, colors, toggleTheme } = useAppTheme();
 
@@ -163,6 +163,15 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileNav }
           }}
           color={colors}
         />
+
+        {actualRole === 'admin' ? (
+          <RowLink
+            icon="shuffle"
+            label="Cambiar modo de admin"
+            onPress={() => setAdminViewRole(null)}
+            color={colors}
+          />
+        ) : null}
 
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Cuenta</Text>
         <RowLink icon="file-text" label="Términos y Condiciones" onPress={goTerms} color={colors} />

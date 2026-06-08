@@ -39,7 +39,7 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
-const SPLASH_MIN_MS = 700;
+const SPLASH_MIN_MS = 450;
 const PROFILE_CACHE_PREFIX = 'el_patron_profile_';
 
 function isInvalidRefreshSessionError(err: unknown): boolean {
@@ -219,7 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(buildTemporaryProfileFromSession(nextSession));
           setProfileResolution('done');
         }
-      }, 2200);
+      }, 1500);
       try {
         let ok = await loadProfileWithRetry(nextSession.user.id);
         if (!ok) {
@@ -517,7 +517,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const hydrated = await Promise.race([
           hydrateAuthenticatedUser(currentSession).then(() => 'done' as const),
-          timeout(3500),
+          timeout(2400),
         ]);
 
         if (hydrated === 'timeout' && profileRef.current?.id !== currentSession.user.id) {

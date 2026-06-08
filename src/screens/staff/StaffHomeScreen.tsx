@@ -8,8 +8,9 @@ import { useAppTheme } from '../../theme/ThemeProvider';
 export default function StaffHomeScreen({ navigation }: any) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { role, signOut, profile } = useAuth();
+  const { role, actualRole, setAdminViewRole, signOut, profile } = useAuth();
   const isAdmin = role === 'admin';
+  const canSwitchMode = actualRole === 'admin';
 
   const modules = [
     { key: 'Bookings', title: 'Reservas', subtitle: 'Hoy, estados y clientes', icon: 'calendar' as const, visible: true },
@@ -29,16 +30,17 @@ export default function StaffHomeScreen({ navigation }: any) {
             <Feather name={isAdmin ? 'shield' : 'calendar'} size={24} color="#fff" />
           </View>
           <Text style={styles.kicker}>{isAdmin ? 'Panel administrador' : 'Panel barbero'}</Text>
-          <Text style={styles.title}>Control de El Patron</Text>
+          <Text style={styles.title}>Control de El Patrón</Text>
           <Text style={styles.sub}>
-            {profile?.name ? `${profile.name} · ` : ''}{isAdmin ? 'Gestiona reservas, equipo y contenido.' : 'Revisa tus reservas y avisos.'}
+            {profile?.name ? `${profile.name} · ` : ''}
+            {isAdmin ? 'Gestiona reservas, equipo y contenido.' : 'Revisa tus reservas y avisos.'}
           </Text>
         </View>
 
         <View style={styles.summaryRow}>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryValue}>{modules.length}</Text>
-            <Text style={styles.summaryLabel}>Modulos</Text>
+            <Text style={styles.summaryLabel}>Módulos</Text>
           </View>
           <View style={styles.summaryCard}>
             <Text style={styles.summaryValue}>{isAdmin ? 'Admin' : 'Barbero'}</Text>
@@ -46,7 +48,7 @@ export default function StaffHomeScreen({ navigation }: any) {
           </View>
         </View>
 
-        <Text style={styles.section}>Accesos rapidos</Text>
+        <Text style={styles.section}>Accesos rápidos</Text>
         <View style={styles.grid}>
           {modules.map((module) => (
             <TouchableOpacity
@@ -63,6 +65,13 @@ export default function StaffHomeScreen({ navigation }: any) {
             </TouchableOpacity>
           ))}
         </View>
+
+        {canSwitchMode ? (
+          <TouchableOpacity style={styles.switchBtn} onPress={() => setAdminViewRole(null)}>
+            <Feather name="shuffle" size={18} color={colors.primary} />
+            <Text style={[styles.switchTxt, { color: colors.primary }]}>Cambiar modo</Text>
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
           <Feather name="log-out" size={18} color="#fff" />
@@ -124,6 +133,19 @@ function createStyles(colors: {
     cardIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.mutedBg },
     cardTitle: { color: colors.text, fontWeight: '900', fontSize: 16, marginTop: 10 },
     cardSub: { color: colors.subtext, fontSize: 12, lineHeight: 16, marginTop: 4 },
+    switchBtn: {
+      marginTop: 8,
+      height: 52,
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      flexDirection: 'row',
+      gap: 8,
+    },
+    switchTxt: { fontWeight: '900' },
     logoutBtn: {
       marginTop: 8,
       height: 52,
