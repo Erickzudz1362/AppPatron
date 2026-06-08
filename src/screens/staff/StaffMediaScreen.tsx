@@ -198,9 +198,9 @@ export default function StaffMediaScreen({ navigation }: any) {
 
   const uploadToPath = async (targetPath: string, successMessage: string) => {
     try {
-      setBusyKey(targetPath);
       const asset = await pickImageFromGallery();
       if (!asset?.uri) return;
+      setBusyKey(targetPath);
 
       await uploadImageFromUri({
         uri: asset.uri,
@@ -236,9 +236,9 @@ export default function StaffMediaScreen({ navigation }: any) {
   const replaceAppAvatar = async (index: number) => {
     try {
       const key = `avatar-${index}`;
-      setBusyKey(key);
       const asset = await pickImageFromGallery();
       if (!asset?.uri) return;
+      setBusyKey(key);
 
       const targetPath = getAvatarStoragePath(index);
       await uploadImageFromUri({
@@ -275,9 +275,9 @@ export default function StaffMediaScreen({ navigation }: any) {
 
   const replaceMainSlide = async (slot: string) => {
     try {
-      setBusyKey(slot);
       const asset = await pickImageFromGallery();
       if (!asset?.uri) return;
+      setBusyKey(slot);
 
       const targetPath = `${HOME_MAIN_CAROUSEL_FOLDER}/${slot}.webp`;
       const stalePaths = SUPPORTED_IMAGE_EXTENSIONS
@@ -330,9 +330,9 @@ export default function StaffMediaScreen({ navigation }: any) {
 
   const replacePaymentQr = async () => {
     try {
-      setBusyKey('payment-qr');
       const asset = await pickImageFromGallery();
       if (!asset?.uri) return;
+      setBusyKey('payment-qr');
 
       await uploadImageFromUri({
         uri: asset.uri,

@@ -41,10 +41,15 @@ function pickWebImageFromGallery(): Promise<ImagePicker.ImagePickerAsset | null>
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/png,image/jpeg,image/jpg,image/webp';
+    input.accept = 'image/*';
     input.style.position = 'fixed';
-    input.style.left = '-9999px';
-    input.style.opacity = '0';
+    input.style.left = '0';
+    input.style.top = '0';
+    input.style.width = '1px';
+    input.style.height = '1px';
+    input.style.opacity = '0.01';
+    input.style.pointerEvents = 'none';
+    input.style.zIndex = '-1';
 
     const cleanup = () => {
       input.remove();

@@ -25,6 +25,35 @@ const QR_STORAGE_BUCKET =
 const QR_STORAGE_PATH =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_QR_PATH?.trim()) || 'qr/current.png';
 
+async function downloadQrOnWeb(url: string): Promise<void> {
+  if (typeof document === 'undefined') return;
+
+  let href = url;
+  let objectUrl: string | null = null;
+  try {
+    const response = await fetch(url);
+    if (response.ok) {
+      const blob = await response.blob();
+      objectUrl = URL.createObjectURL(blob);
+      href = objectUrl;
+    }
+  } catch {
+    // Si fetch falla por CORS, usamos el enlace público directo.
+  }
+
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = `qr-el-patron-${Date.now()}.png`;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  if (objectUrl) {
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
+}
+
 export default function QrPaymentScreen({ navigation }: { navigation: { goBack: () => void } }) {
   const { colors } = useAppTheme();
   const [saving, setSaving] = useState(false);
@@ -32,13 +61,21 @@ export default function QrPaymentScreen({ navigation }: { navigation: { goBack: 
 
   const qrPublicUrl = useMemo(() => {
     const { data } = supabase.storage.from(QR_STORAGE_BUCKET).getPublicUrl(QR_STORAGE_PATH);
-    // Cache buster para reflejar cambios del dueño sin republicar la app.
     return `${data.publicUrl}?v=${Math.floor(Date.now() / 60000)}`;
   }, []);
 
   const downloadQr = useCallback(async () => {
     if (Platform.OS === 'web') {
-      Alert.alert('No disponible', 'Abre esta pantalla en la app para móvil.');
+      setSaving(true);
+      try {
+        await downloadQrOnWeb(qrPublicUrl);
+        Alert.alert('QR descargado', 'Se inició la descarga del QR de pago.');
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'No se pudo descargar el QR.';
+        Alert.alert('Error', msg);
+      } finally {
+        setSaving(false);
+      }
       return;
     }
 
@@ -52,7 +89,6 @@ export default function QrPaymentScreen({ navigation }: { navigation: { goBack: 
         uri = dl.uri;
       }
 
-      // Si falla Storage, usar fallback local para no bloquear la descarga.
       if (!uri) {
         const asset = Asset.fromModule(QR_FALLBACK);
         await asset.downloadAsync();
@@ -64,7 +100,6 @@ export default function QrPaymentScreen({ navigation }: { navigation: { goBack: 
         return;
       }
 
-      // Android 13+: solo permiso de fotos (evita pedir audio). iOS ignora el segundo argumento.
       const perm = await MediaLibrary.requestPermissionsAsync(
         false,
         Platform.OS === 'android' ? ['photo'] : undefined

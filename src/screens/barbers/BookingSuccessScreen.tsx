@@ -14,6 +14,35 @@ const QR_FALLBACK = require('../../../assets/icon.png');
 const QR_STORAGE_BUCKET = (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_QR_BUCKET?.trim()) || 'payment-assets';
 const QR_STORAGE_PATH = (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_QR_PATH?.trim()) || 'qr/current.png';
 
+async function downloadQrOnWeb(url: string): Promise<void> {
+  if (typeof document === 'undefined') return;
+
+  let href = url;
+  let objectUrl: string | null = null;
+  try {
+    const response = await fetch(url);
+    if (response.ok) {
+      const blob = await response.blob();
+      objectUrl = URL.createObjectURL(blob);
+      href = objectUrl;
+    }
+  } catch {
+    // Si el navegador bloquea fetch/CORS, usamos el enlace público directo.
+  }
+
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = `qr-el-patron-${Date.now()}.png`;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  if (objectUrl) {
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
+}
+
 export default function BookingSuccessScreen({ navigation, route }: any) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -35,7 +64,13 @@ export default function BookingSuccessScreen({ navigation, route }: any) {
 
   const downloadQr = useCallback(async () => {
     if (Platform.OS === 'web') {
-      setDialog({ title: 'No disponible', message: 'Abre esta pantalla en la app movil para descargar el QR.' });
+      setSavingQr(true);
+      try {
+        await downloadQrOnWeb(qrPublicUrl);
+        setDialog({ title: 'QR descargado', message: 'Se inició la descarga del QR de pago.' });
+      } finally {
+        setSavingQr(false);
+      }
       return;
     }
     setSavingQr(true);
