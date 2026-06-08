@@ -1,21 +1,36 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  ActivityIndicator,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import { supabase } from '../config/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme/ThemeProvider';
 import { createAuthLayoutStyles } from '../auth/authLayoutStyles';
 import AppDialog from '../components/AppDialog';
 import { normalizeErrorMessage } from '../utils/errorMessages';
+
+function cleanPersonName(value: string): string {
+  return value.replace(/[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ\s'-]/g, '').replace(/\s{2,}/g, ' ');
+}
+
+function isValidPersonName(value: string): boolean {
+  return /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+(?:[\s'-][A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+)*$/.test(value.trim());
+}
+
+async function emailAlreadyExists(email: string): Promise<boolean | null> {
+  const { data, error } = await supabase.rpc('email_exists', { p_email: email.toLowerCase() });
+  if (error) return null;
+  return data === true;
+}
 
 export default function RegisterScreen({
   navigation,
@@ -45,10 +60,7 @@ export default function RegisterScreen({
 
   const handleRegister = async () => {
     if (!nombres.trim() || !apellidos.trim() || !phone.trim() || !email.trim() || !emailConfirm.trim() || !pass || !pass2) {
-      setDialog({
-        title: 'Campos incompletos',
-        message: 'Completa nombres, apellidos, teléfono, correo, confirmación de correo y contraseña.',
-      });
+      setDialog({ title: 'Campos incompletos', message: 'Completa nombres, apellidos, teléfono, correo, confirmación de correo y contraseña.' });
       return;
     }
 
@@ -61,6 +73,10 @@ export default function RegisterScreen({
     }
     if (emailTrim.toLowerCase() !== emailConfirmTrim.toLowerCase()) {
       setDialog({ title: 'Correos distintos', message: 'El correo y su confirmación deben ser iguales.' });
+      return;
+    }
+    if (!isValidPersonName(nombres) || !isValidPersonName(apellidos)) {
+      setDialog({ title: 'Nombre inválido', message: 'Escribe solo letras en nombres y apellidos, sin emojis ni símbolos.' });
       return;
     }
     if (pass.length < 8) {
@@ -78,6 +94,15 @@ export default function RegisterScreen({
 
     setSubmitting(true);
     try {
+      const exists = await emailAlreadyExists(emailTrim);
+      if (exists) {
+        setDialog({
+          title: 'Correo ya registrado',
+          message: 'Este correo ya tiene una cuenta. Inicia sesión o usa recuperar contraseña.',
+        });
+        return;
+      }
+
       const fullName = buildFullName(nombres, apellidos);
       await signUp(emailTrim, pass, { name: fullName, phone: phone.trim() });
       setDialog({
@@ -121,17 +146,17 @@ export default function RegisterScreen({
 
           <View style={styles.inputWrap}>
             <Feather name="user" size={20} color={colors.primary} style={{ marginRight: 10 }} />
-            <TextInput placeholder="Nombres" placeholderTextColor={colors.subtext} style={styles.input} value={nombres} onChangeText={setNombres} autoCapitalize="words" editable={!submitting} />
+            <TextInput placeholder="Nombres" placeholderTextColor={colors.subtext} style={styles.input} value={nombres} onChangeText={(value) => setNombres(cleanPersonName(value))} autoCapitalize="words" editable={!submitting} />
           </View>
 
           <View style={styles.inputWrap}>
             <Feather name="users" size={20} color={colors.primary} style={{ marginRight: 10 }} />
-            <TextInput placeholder="Apellidos" placeholderTextColor={colors.subtext} style={styles.input} value={apellidos} onChangeText={setApellidos} autoCapitalize="words" editable={!submitting} />
+            <TextInput placeholder="Apellidos" placeholderTextColor={colors.subtext} style={styles.input} value={apellidos} onChangeText={(value) => setApellidos(cleanPersonName(value))} autoCapitalize="words" editable={!submitting} />
           </View>
 
           <View style={styles.inputWrap}>
             <Feather name="phone" size={20} color={colors.primary} style={{ marginRight: 10 }} />
-            <TextInput placeholder="WhatsApp o teléfono" placeholderTextColor={colors.subtext} style={styles.input} keyboardType="phone-pad" value={phone} onChangeText={setPhone} editable={!submitting} />
+            <TextInput placeholder="Teléfono" placeholderTextColor={colors.subtext} style={styles.input} keyboardType="phone-pad" value={phone} onChangeText={setPhone} editable={!submitting} />
           </View>
 
           <View style={styles.inputWrap}>

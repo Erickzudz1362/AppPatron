@@ -52,6 +52,19 @@ export default function NotificationsScreen() {
   const [data, setData] = useState<NoticeItem[]>([]);
   const [filter, setFilter] = useState<FilterKey>('Todos');
 
+  const markVisibleAsRead = React.useCallback(async (items: NoticeItem[]) => {
+    const unread = items.filter((item) => !item.read).map((item) => item.id);
+    if (!unread.length) return;
+    setData((curr) => curr.map((item) => (unread.includes(item.id) ? { ...item, read: true } : item)));
+
+    const uid = session?.user?.id;
+    if (!uid) return;
+    const { error } = await supabase
+      .from('notification_reads')
+      .upsert(unread.map((notification_id) => ({ user_id: uid, notification_id })), { onConflict: 'user_id,notification_id' });
+    if (error) console.warn('[Notifications] markVisibleAsRead:', error.message);
+  }, [session?.user?.id]);
+
   useEffect(() => {
     if (remoteNotices) setData(remoteNotices);
   }, [remoteNotices]);
@@ -60,8 +73,13 @@ export default function NotificationsScreen() {
   useFocusEffect(
     React.useCallback(() => {
       void refreshSilently();
-    }, [refreshSilently])
+      void markVisibleAsRead(data);
+    }, [data, markVisibleAsRead, refreshSilently])
   );
+
+  useEffect(() => {
+    void markVisibleAsRead(data);
+  }, [data, markVisibleAsRead]);
 
   // Auto refresh en la misma vista (fallback estable aunque Realtime falle).
   useEffect(() => {

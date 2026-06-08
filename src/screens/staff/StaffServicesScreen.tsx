@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { FlatList, StyleSheet, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../config/supabase';
@@ -32,6 +32,7 @@ export default function StaffServicesScreen({ navigation }: any) {
   const [visibleOnApp, setVisibleOnApp] = useState(INITIAL_FORM.visibleOnApp);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<ServiceRow | null>(null);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase
@@ -67,11 +68,11 @@ export default function StaffServicesScreen({ navigation }: any) {
       return;
     }
     if (!Number.isFinite(duration) || duration <= 0) {
-      setDialog({ title: 'Duracion invalida', message: 'La duracion debe ser mayor a 0 minutos.' });
+      setDialog({ title: 'Duración inválida', message: 'La duración debe ser mayor a 0 minutos.' });
       return;
     }
     if (!Number.isFinite(finalPrice) || finalPrice <= 0) {
-      setDialog({ title: 'Precio invalido', message: 'El precio debe ser mayor a 0 Bs.' });
+      setDialog({ title: 'Precio inválido', message: 'El precio debe ser mayor a 0 Bs.' });
       return;
     }
 
@@ -118,28 +119,30 @@ export default function StaffServicesScreen({ navigation }: any) {
     setVisibleOnApp(row.active);
   };
 
-  const removeService = (row: ServiceRow) => {
-    Alert.alert(
-      'Eliminar servicio',
-      `Se eliminara "${row.name}". Esta accion no se puede deshacer.`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            const { error } = await supabase.from('services').delete().eq('id', row.id);
-            if (error) {
-              setDialog({ title: 'No se pudo eliminar', message: error.message });
-              return;
-            }
-            if (editingId === row.id) resetForm();
-            setDialog({ title: 'Servicio eliminado', message: 'El servicio fue eliminado correctamente.' });
-            void load();
-          },
-        },
-      ]
-    );
+  const removeService = async (row: ServiceRow) => {
+    const { error } = await supabase.from('services').delete().eq('id', row.id);
+    if (error) {
+      const isReferenced = error.code === '23503' || /foreign key|violates/i.test(error.message ?? '');
+      if (isReferenced) {
+        const softDelete = await supabase.from('services').update({ active: false }).eq('id', row.id);
+        if (softDelete.error) {
+          setDialog({ title: 'No se pudo eliminar', message: softDelete.error.message });
+          return;
+        }
+        if (editingId === row.id) resetForm();
+        setDialog({
+          title: 'Servicio ocultado',
+          message: 'Este servicio ya tiene reservas antiguas, por seguridad no se borra de la base de datos. Quedó oculto para los clientes.',
+        });
+        void load();
+        return;
+      }
+      setDialog({ title: 'No se pudo eliminar', message: error.message });
+      return;
+    }
+    if (editingId === row.id) resetForm();
+    setDialog({ title: 'Servicio eliminado', message: 'El servicio fue eliminado correctamente.' });
+    void load();
   };
 
   return (
@@ -185,7 +188,7 @@ export default function StaffServicesScreen({ navigation }: any) {
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Visible para clientes</Text>
             <Text style={styles.switchHelper}>
-              Si esta desactivado, el servicio seguira guardado pero no aparecera para nuevas reservas.
+          Si está desactivado, el servicio seguirá guardado pero no aparecerá para nuevas reservas.
             </Text>
           </View>
           <Switch value={visibleOnApp} onValueChange={setVisibleOnApp} trackColor={{ false: colors.border, true: colors.primary }} />
@@ -197,7 +200,7 @@ export default function StaffServicesScreen({ navigation }: any) {
           </TouchableOpacity>
           {editingId ? (
             <TouchableOpacity style={styles.secondaryBtn} onPress={resetForm}>
-              <Text style={styles.secondaryBtnTxt}>Cancelar edicion</Text>
+              <Text style={styles.secondaryBtnTxt}>Cancelar edición</Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -212,14 +215,14 @@ export default function StaffServicesScreen({ navigation }: any) {
             <View style={styles.cardTop}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.meta}>Duracion: {item.duration_minutes} min</Text>
+              <Text style={styles.meta}>Duración: {item.duration_minutes} min</Text>
                 <Text style={styles.meta}>Precio: {item.price} Bs</Text>
               </View>
               <View style={styles.iconRow}>
                 <TouchableOpacity style={styles.iconBtn} onPress={() => startEditing(item)}>
                   <Feather name="edit-2" size={16} color="#fff" />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.iconBtn, styles.deleteBtn]} onPress={() => removeService(item)}>
+                <TouchableOpacity style={[styles.iconBtn, styles.deleteBtn]} onPress={() => setConfirmDelete(item)}>
                   <Feather name="trash-2" size={16} color="#fff" />
                 </TouchableOpacity>
               </View>
@@ -234,6 +237,20 @@ export default function StaffServicesScreen({ navigation }: any) {
       />
 
       <AppDialog visible={!!dialog} title={dialog?.title ?? ''} message={dialog?.message ?? ''} onClose={() => setDialog(null)} />
+      <AppDialog
+        visible={!!confirmDelete}
+        title="Eliminar servicio"
+        message={confirmDelete ? `¿Seguro que quieres eliminar "${confirmDelete.name}"?` : ''}
+        actionLabel="Eliminar"
+        secondaryLabel="Cancelar"
+        destructive
+        onSecondary={() => setConfirmDelete(null)}
+        onClose={() => {
+          const row = confirmDelete;
+          setConfirmDelete(null);
+          if (row) void removeService(row);
+        }}
+      />
     </SafeAreaView>
   );
 }

@@ -97,7 +97,7 @@ export async function fetchHomeBarbers(): Promise<HomeBarber[]> {
 export async function fetchHomeServices(): Promise<HomeService[]> {
   if (!isSupabaseConfigured()) return FALLBACK_HOME_SERVICES;
 
-  const { data, error } = await supabase.from('services').select('id, name, price').limit(24);
+  const { data, error } = await supabase.from('services').select('id, name, price').eq('active', true).limit(24);
   if (error) {
     warnOnce('services', error.message);
     return FALLBACK_HOME_SERVICES;

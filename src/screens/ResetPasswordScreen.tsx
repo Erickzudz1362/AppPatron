@@ -18,19 +18,15 @@ import { useAppTheme } from '../theme/ThemeProvider';
 import { normalizeErrorMessage } from '../utils/errorMessages';
 
 function isStrongPassword(value: string): { ok: boolean; message?: string } {
-  if (value.length < 8) {
-    return { ok: false, message: 'Usa al menos 8 caracteres.' };
-  }
-  if (!/[A-ZÁÉÍÓÚÑ]/.test(value)) {
-    return { ok: false, message: 'Incluye al menos una letra mayúscula.' };
-  }
+  if (value.length < 8) return { ok: false, message: 'Usa al menos 8 caracteres.' };
+  if (!/[A-ZÁÉÍÓÚÑ]/.test(value)) return { ok: false, message: 'Incluye al menos una letra mayúscula.' };
   return { ok: true };
 }
 
 export default function ResetPasswordScreen() {
   const { colors } = useAppTheme();
   const styles = createAuthLayoutStyles(colors);
-  const { finishPasswordRecovery, cancelPasswordRecovery } = useAuth();
+  const { finishPasswordRecovery, cancelPasswordRecovery, signOut } = useAuth();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -62,8 +58,10 @@ export default function ResetPasswordScreen() {
       await finishPasswordRecovery(password);
       setDialog({
         title: 'Contraseña actualizada',
-        message: 'Tu contraseña se cambió correctamente.',
-        onClose: () => cancelPasswordRecovery(),
+        message: 'Tu contraseña se cambió correctamente. Vuelve a iniciar sesión con la nueva contraseña.',
+        onClose: () => {
+          void signOut();
+        },
       });
     } catch (error) {
       setDialog({
@@ -105,7 +103,7 @@ export default function ResetPasswordScreen() {
           <View style={styles.inputWrap}>
             <Feather name="lock" size={20} color={colors.primary} style={{ marginRight: 10 }} />
             <TextInput
-              placeholder="Contraseña"
+              placeholder="Contraseña nueva"
               placeholderTextColor={colors.subtext}
               style={styles.input}
               secureTextEntry={!showPassword}
@@ -114,7 +112,7 @@ export default function ResetPasswordScreen() {
               editable={!submitting}
               textContentType="newPassword"
             />
-            <TouchableOpacity onPress={() => setShowPassword((prev) => !prev)}>
+            <TouchableOpacity onPress={() => setShowPassword((prev) => !prev)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Feather name={showPassword ? 'eye' : 'eye-off'} size={20} color={colors.subtext} />
             </TouchableOpacity>
           </View>
@@ -129,9 +127,9 @@ export default function ResetPasswordScreen() {
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               editable={!submitting}
-              textContentType="password"
+              textContentType="newPassword"
             />
-            <TouchableOpacity onPress={() => setShowConfirmPassword((prev) => !prev)}>
+            <TouchableOpacity onPress={() => setShowConfirmPassword((prev) => !prev)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
               <Feather name={showConfirmPassword ? 'eye' : 'eye-off'} size={20} color={colors.subtext} />
             </TouchableOpacity>
           </View>

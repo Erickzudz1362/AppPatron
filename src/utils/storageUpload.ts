@@ -1,6 +1,7 @@
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { Platform } from 'react-native';
 import { supabase } from '../config/supabase';
 
 export const BARBER_PHOTOS_BUCKET = 'barber-photos';
@@ -68,13 +69,21 @@ export async function uploadImageFromUri(params: {
     // Si el dispositivo no puede convertir a WebP, subimos la imagen original comprimida por el picker.
   }
 
-  const base64 = await FileSystem.readAsStringAsync(uploadUri, {
-    encoding: 'base64',
-  });
+  let body: ArrayBuffer | Uint8Array;
+  if (Platform.OS === 'web') {
+    const response = await fetch(uploadUri);
+    if (!response.ok) {
+      throw new Error('No se pudo preparar la imagen seleccionada.');
+    }
+    body = await response.arrayBuffer();
+  } else {
+    const base64 = await FileSystem.readAsStringAsync(uploadUri, {
+      encoding: 'base64',
+    });
+    body = decodeBase64(base64);
+  }
 
-  const bytes = decodeBase64(base64);
-
-  const { error } = await supabase.storage.from(params.bucket).upload(params.path, bytes, {
+  const { error } = await supabase.storage.from(params.bucket).upload(params.path, body, {
     upsert: true,
     contentType,
   });

@@ -211,6 +211,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       hydratingUserIdRef.current = nextSession.user.id;
       setProfileResolution('loading');
+      const fallbackTimer = setTimeout(() => {
+        if (
+          hydratingUserIdRef.current === nextSession.user.id &&
+          !profileRef.current
+        ) {
+          setProfile(buildTemporaryProfileFromSession(nextSession));
+          setProfileResolution('done');
+        }
+      }, 2200);
       try {
         let ok = await loadProfileWithRetry(nextSession.user.id);
         if (!ok) {
@@ -221,6 +230,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
       } finally {
+        clearTimeout(fallbackTimer);
         hydratingUserIdRef.current = null;
         setProfileResolution('done');
       }

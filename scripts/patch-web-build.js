@@ -30,6 +30,7 @@ html = html.replace(
 
 const pwaHead = [
   '<style id="el-patron-icon-font">@font-face{font-family:feather;src:url("/fonts/Feather.ttf") format("truetype");font-display:block;}@font-face{font-family:Feather;src:url("/fonts/Feather.ttf") format("truetype");font-display:block;}[style*="font-family: feather"],[style*="font-family:feather"],[style*="fontFamily: feather"]{font-family:feather!important;line-height:1!important;vertical-align:middle!important;-webkit-font-smoothing:antialiased;}</style>',
+  '<style id="el-patron-web-polish">input,textarea,[contenteditable="true"]{outline:none!important;box-shadow:none!important;-webkit-tap-highlight-color:transparent!important;}input:focus,textarea:focus{outline:none!important;box-shadow:none!important;}*{-webkit-tap-highlight-color:transparent;}</style>',
   '<link rel="manifest" href="/manifest.webmanifest" />',
   '<link rel="apple-touch-icon" href="/apple-touch-icon.png" />',
   '<meta name="theme-color" content="#08b9c7" />',

@@ -58,7 +58,8 @@ export default function HomeScreen({ navigation }: any) {
     'EL PATRON BARBERIA\nSince 2022\nDedicado a los hombres que huyen de los estereotipos, alejados de los roles de masculinidad que tan poco se llevan en esta epoca, El Patron es un concept store ubicado en el corazon de Bolivia que auna en un solo espacio barberia y tienda de moda y complementos. La idea es que el cliente se sienta como en casa, por eso el local esta decorado como si fuera un apartamento de soltero, donde se mezcla con otros espacios como (Futbol TV, Buena Musica, Barra Bar, Videojuegos, PlayStation). Entre los servicios de barberia, mejor con cita previa, la carta ofrece corte de pelo premium + lavado y peinado, hasta afeitado clasico a navaja, sin olvidar los packs, como el corte de pelo y arreglo de barba premium, entre otros servicios mas.';
   const testimonialText =
     data?.testimonial ?? 'Atención profesional, puntual y con excelente ambiente.';
-  const showSecondCarousel = data?.showSecondCarousel !== false;
+  const [secondCarouselSetting, setSecondCarouselSetting] = useState<boolean | null>(null);
+  const showSecondCarousel = secondCarouselSetting ?? (data?.showSecondCarousel !== false);
 
   const gallerySources: ImageSourcePropType[] = useMemo(
     () =>
@@ -105,6 +106,19 @@ export default function HomeScreen({ navigation }: any) {
     []
   );
 
+  const loadSecondCarouselSetting = useMemo(
+    () => async () => {
+      const { data: setting } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'show_second_carousel')
+        .maybeSingle();
+      const value = typeof setting?.value === 'string' ? setting.value.trim().toLowerCase() : '';
+      setSecondCarouselSetting(value === '' ? true : value === 'true');
+    },
+    []
+  );
+
   const firstName = useMemo(() => {
     const raw = profile?.name?.trim();
     if (!raw) return '';
@@ -123,27 +137,30 @@ export default function HomeScreen({ navigation }: any) {
   const openLink = (url: string) => Linking.openURL(url);
 
   useEffect(() => {
+    void loadSecondCarouselSetting();
     if (!showSecondCarousel) {
       setSecondCarouselUrls([]);
       return;
     }
     void loadSecondCarousel();
-  }, [loadSecondCarousel, showSecondCarousel]);
+  }, [loadSecondCarousel, loadSecondCarouselSetting, showSecondCarousel]);
 
   useFocusEffect(
     React.useCallback(() => {
       void refreshSilently();
+      void loadSecondCarouselSetting();
       if (showSecondCarousel) {
         void loadSecondCarousel();
       } else {
         setSecondCarouselUrls([]);
       }
-    }, [loadSecondCarousel, refreshSilently, showSecondCarousel])
+    }, [loadSecondCarousel, loadSecondCarouselSetting, refreshSilently, showSecondCarousel])
   );
 
   useEffect(() => {
     const refreshSoon = () => {
       void refreshSilently();
+      void loadSecondCarouselSetting();
       if (showSecondCarousel) {
         void loadSecondCarousel();
       } else {
@@ -162,7 +179,7 @@ export default function HomeScreen({ navigation }: any) {
     return () => {
       void supabase.removeChannel(homeChannel);
     };
-  }, [loadSecondCarousel, refreshSilently, showSecondCarousel]);
+  }, [loadSecondCarousel, loadSecondCarouselSetting, refreshSilently, showSecondCarousel]);
 
   const secondCarouselSources: ImageSourcePropType[] = useMemo(
     () => secondCarouselUrls.map((url) => ({ uri: url })),

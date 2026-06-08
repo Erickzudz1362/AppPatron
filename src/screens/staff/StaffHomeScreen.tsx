@@ -16,7 +16,7 @@ export default function StaffHomeScreen({ navigation }: any) {
     { key: 'Services', title: 'Servicios', subtitle: 'Crear, editar y eliminar', icon: 'scissors' as const, visible: isAdmin },
     { key: 'Barbers', title: 'Barberos', subtitle: 'Equipo, fotos y horarios', icon: 'users' as const, visible: isAdmin },
     { key: 'Notices', title: 'Avisos', subtitle: 'Promos y comunicados', icon: 'bell' as const, visible: isAdmin },
-    { key: 'Media', title: 'Contenido', subtitle: 'Carruseles, galeria y QR', icon: 'image' as const, visible: isAdmin },
+    { key: 'Media', title: 'Contenido', subtitle: 'Carruseles, galería y QR', icon: 'image' as const, visible: isAdmin },
     { key: 'Coupons', title: 'Cupones', subtitle: 'Descuentos activos', icon: 'tag' as const, visible: isAdmin },
     { key: 'Settings', title: 'Ajustes', subtitle: 'Reglas y contacto', icon: 'settings' as const, visible: isAdmin },
   ].filter((module) => module.visible);
@@ -66,7 +66,7 @@ export default function StaffHomeScreen({ navigation }: any) {
 
         <TouchableOpacity style={styles.logoutBtn} onPress={signOut}>
           <Feather name="log-out" size={18} color="#fff" />
-          <Text style={styles.logoutTxt}>Cerrar sesion</Text>
+          <Text style={styles.logoutTxt}>Cerrar sesión</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

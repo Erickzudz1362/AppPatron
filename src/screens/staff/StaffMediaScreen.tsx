@@ -67,6 +67,7 @@ export default function StaffMediaScreen({ navigation }: any) {
   const [avatarRefreshKey, setAvatarRefreshKey] = useState(() => Date.now());
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ path: string; message: string } | null>(null);
 
   const loadMedia = async () => {
     const carouselPromise = supabase.storage.from(PROMO_CAROUSEL_BUCKET).list(HOME_MAIN_CAROUSEL_FOLDER, {
@@ -154,7 +155,7 @@ export default function StaffMediaScreen({ navigation }: any) {
     setDialog({
       title: 'Guardado',
       message: value
-        ? 'Las promociones volveran a mostrarse en el inicio.'
+        ? 'Las promociones volverán a mostrarse en el inicio.'
         : 'Las promociones dejaron de mostrarse en el inicio.',
     });
   };
@@ -172,7 +173,7 @@ export default function StaffMediaScreen({ navigation }: any) {
 
     setDialog({
       title: 'Guardado',
-      message: `La galeria ahora mostrara ${value} foto${value === 1 ? '' : 's'} en el inicio.`,
+      message: `La galería ahora mostrará ${value} foto${value === 1 ? '' : 's'} en el inicio.`,
     });
   };
 
@@ -224,12 +225,12 @@ export default function StaffMediaScreen({ navigation }: any) {
 
   const uploadPromoImage = async () => {
     const path = `${HOME_PROMO_CAROUSEL_FOLDER}/promo-${Date.now()}.webp`;
-    await uploadToPath(path, 'La promocion ya esta lista para mostrarse en el inicio.');
+    await uploadToPath(path, 'La promoción ya está lista para mostrarse en el inicio.');
   };
 
   const uploadGalleryImage = async () => {
     const path = `${HOME_GALLERY_FOLDER}/gallery-${Date.now()}.webp`;
-    await uploadToPath(path, 'La imagen ya fue agregada a la galeria del inicio.');
+    await uploadToPath(path, 'La imagen ya fue agregada a la galería del inicio.');
   };
 
   const replaceAppAvatar = async (index: number) => {
@@ -308,7 +309,7 @@ export default function StaffMediaScreen({ navigation }: any) {
   };
 
   const replaceGalleryImage = async (item: PreviewItem) => {
-    await uploadToPath(item.path, 'La imagen de la galeria fue reemplazada correctamente.');
+    await uploadToPath(item.path, 'La imagen de la galería fue reemplazada correctamente.');
   };
 
   const removeImage = async (path: string, successMessage: string) => {
@@ -364,7 +365,7 @@ export default function StaffMediaScreen({ navigation }: any) {
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.content}>
         <StaffScreenHeader title="Inicio y promociones" navigation={navigation} />
-        <Text style={styles.sub}>Gestiona las imagenes del inicio directamente desde la galeria de tu celular.</Text>
+        <Text style={styles.sub}>Gestiona las imágenes del inicio directamente desde la galería de tu celular.</Text>
 
         <View style={styles.card}>
           <Text style={styles.h}>Carrusel principal</Text>
@@ -406,7 +407,7 @@ export default function StaffMediaScreen({ navigation }: any) {
             />
           </View>
           <TouchableOpacity style={styles.btn} onPress={() => void uploadPromoImage()} disabled={busyKey === 'promo-upload'}>
-            <Text style={styles.btnTxt}>Subir promocion desde galeria</Text>
+            <Text style={styles.btnTxt}>Subir promoción desde galería</Text>
           </TouchableOpacity>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
             {promoImages.length ? (
@@ -416,14 +417,14 @@ export default function StaffMediaScreen({ navigation }: any) {
                   <View style={styles.iconStack}>
                     <TouchableOpacity
                       style={styles.iconBtn}
-                      onPress={() => void uploadToPath(item.path, 'La promocion fue reemplazada correctamente.')}
+                      onPress={() => void uploadToPath(item.path, 'La promoción fue reemplazada correctamente.')}
                       disabled={busyKey === item.path}
                     >
                       {busyKey === item.path ? <ActivityIndicator color="#fff" size="small" /> : <Feather name="edit-2" size={15} color="#fff" />}
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.iconBtn}
-                      onPress={() => void removeImage(item.path, 'La promocion fue eliminada del carrusel.')}
+                      onPress={() => setConfirmDelete({ path: item.path, message: 'La promoción fue eliminada del carrusel.' })}
                       disabled={busyKey === item.path}
                     >
                       {busyKey === item.path ? <ActivityIndicator color="#fff" size="small" /> : <Feather name="trash-2" size={16} color="#fff" />}
@@ -432,14 +433,14 @@ export default function StaffMediaScreen({ navigation }: any) {
                 </View>
               ))
             ) : (
-              <Text style={styles.small}>Todavia no hay promociones cargadas.</Text>
+              <Text style={styles.small}>Todavía no hay promociones cargadas.</Text>
             )}
           </ScrollView>
         </View>
 
         <View style={styles.card}>
           <Text style={styles.h}>Galeria del inicio</Text>
-          <Text style={styles.t}>Estas imagenes se muestran en la seccion de galeria del inicio.</Text>
+          <Text style={styles.t}>Estas imágenes se muestran en la sección de galería del inicio.</Text>
           <Text style={styles.mediaTitle}>Fotos visibles en el inicio</Text>
           <View style={styles.optionRow}>
             {[2, 3, 4].map((count) => {
@@ -456,7 +457,7 @@ export default function StaffMediaScreen({ navigation }: any) {
             })}
           </View>
           <TouchableOpacity style={styles.btn} onPress={() => void uploadGalleryImage()}>
-            <Text style={styles.btnTxt}>Agregar foto desde galeria</Text>
+            <Text style={styles.btnTxt}>Agregar foto desde galería</Text>
           </TouchableOpacity>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
             {galleryImages.length ? (
@@ -473,7 +474,7 @@ export default function StaffMediaScreen({ navigation }: any) {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.iconBtn}
-                      onPress={() => void removeImage(item.path, 'La imagen fue eliminada de la galeria del inicio.')}
+                      onPress={() => setConfirmDelete({ path: item.path, message: 'La imagen fue eliminada de la galería del inicio.' })}
                       disabled={busyKey === item.path}
                     >
                       {busyKey === item.path ? <ActivityIndicator color="#fff" size="small" /> : <Feather name="trash-2" size={16} color="#fff" />}
@@ -482,7 +483,7 @@ export default function StaffMediaScreen({ navigation }: any) {
                 </View>
               ))
             ) : (
-              <Text style={styles.small}>Todavia no hay imagenes en la galeria.</Text>
+              <Text style={styles.small}>Todavía no hay imágenes en la galería.</Text>
             )}
           </ScrollView>
         </View>
@@ -547,12 +548,26 @@ export default function StaffMediaScreen({ navigation }: any) {
           <Text style={styles.h}>QR de pago</Text>
           <Text style={styles.t}>Este es el QR que se usa en toda la app para pagos.</Text>
           <TouchableOpacity style={styles.btn} onPress={() => void replacePaymentQr()} disabled={busyKey === 'payment-qr'}>
-            {busyKey === 'payment-qr' ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTxt}>Cambiar QR desde galeria</Text>}
+            {busyKey === 'payment-qr' ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnTxt}>Cambiar QR desde galería</Text>}
           </TouchableOpacity>
           <Text style={styles.small}>Bucket: {QR_BUCKET} / Ruta: {QR_PATH}</Text>
         </View>
 
         <AppDialog visible={!!dialog} title={dialog?.title ?? ''} message={dialog?.message ?? ''} onClose={() => setDialog(null)} />
+        <AppDialog
+          visible={!!confirmDelete}
+          title="Eliminar imagen"
+          message="¿Seguro que quieres eliminar esta imagen?"
+          actionLabel="Eliminar"
+          secondaryLabel="Cancelar"
+          destructive
+          onSecondary={() => setConfirmDelete(null)}
+          onClose={() => {
+            const item = confirmDelete;
+            setConfirmDelete(null);
+            if (item) void removeImage(item.path, item.message);
+          }}
+        />
       </ScrollView>
     </SafeAreaView>
   );

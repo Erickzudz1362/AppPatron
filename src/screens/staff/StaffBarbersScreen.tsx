@@ -112,6 +112,7 @@ export default function StaffBarbersScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<BarberRow | null>(null);
 
   const resetForm = () => {
     setUserId('');
@@ -261,15 +262,15 @@ export default function StaffBarbersScreen({ navigation }: any) {
         return;
       }
       if (!password || password.length < 8) {
-        setDialog({ title: 'Contrasena invalida', message: 'La contrasena debe tener al menos 8 caracteres.' });
+        setDialog({ title: 'Contraseña inválida', message: 'La contraseña debe tener al menos 8 caracteres.' });
         return;
       }
-      if (!/[A-Z]/.test(password)) {
-        setDialog({ title: 'Contrasena invalida', message: 'La contrasena debe incluir al menos una letra mayuscula.' });
+      if (!/[A-ZÁÉÍÓÚÑ]/.test(password)) {
+        setDialog({ title: 'Contraseña inválida', message: 'La contraseña debe incluir al menos una letra mayúscula.' });
         return;
       }
       if (password !== confirmPassword) {
-        setDialog({ title: 'Contrasenas distintas', message: 'La confirmacion no coincide con la contrasena.' });
+        setDialog({ title: 'Contraseñas distintas', message: 'La confirmación no coincide con la contraseña.' });
         return;
       }
     }
@@ -421,11 +422,11 @@ export default function StaffBarbersScreen({ navigation }: any) {
                 keyboardType="email-address"
               />
 
-              <Text style={styles.label}>Contrasena</Text>
+              <Text style={styles.label}>Contraseña</Text>
               <View style={styles.inputWithAction}>
                 <TextInput
                   style={styles.inputInline}
-                  placeholder="Minimo 8 caracteres y una mayuscula"
+                  placeholder="Mínimo 8 caracteres y una mayúscula"
                   placeholderTextColor={colors.subtext}
                   value={password}
                   onChangeText={setPassword}
@@ -436,11 +437,11 @@ export default function StaffBarbersScreen({ navigation }: any) {
                 </TouchableOpacity>
               </View>
 
-              <Text style={styles.label}>Repetir contrasena</Text>
+              <Text style={styles.label}>Repetir contraseña</Text>
               <View style={styles.inputWithAction}>
                 <TextInput
                   style={styles.inputInline}
-                  placeholder="Repite la contrasena"
+                  placeholder="Repite la contraseña"
                   placeholderTextColor={colors.subtext}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
@@ -456,7 +457,7 @@ export default function StaffBarbersScreen({ navigation }: any) {
               <Text style={styles.label}>UUID del usuario existente</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Pega aqui el user_id de Auth"
+                placeholder="Pega aquí el user_id de Auth"
                 placeholderTextColor={colors.subtext}
                 value={userId}
                 onChangeText={setUserId}
@@ -471,8 +472,8 @@ export default function StaffBarbersScreen({ navigation }: any) {
           <View style={styles.photoPickerCard}>
             <Image source={photoUrl ? { uri: photoUrl } : DEFAULT_BARBER_AVATAR} style={styles.previewPhoto} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.photoPickerText}>Sube una foto desde la galeria. Se mostrara en inicio, listado y perfil del barbero.</Text>
-              <Text style={styles.photoPickerText}>Si no subes una foto, se usara la imagen por defecto.</Text>
+              <Text style={styles.photoPickerText}>Sube una foto desde la galería. Se mostrará en inicio, listado y perfil del barbero.</Text>
+              <Text style={styles.photoPickerText}>Si no subes una foto, se usará la imagen por defecto.</Text>
               <TouchableOpacity style={styles.photoBtn} onPress={() => void pickBarberPhoto()} disabled={uploadingPhoto}>
                 {uploadingPhoto ? <ActivityIndicator color="#fff" /> : <Text style={styles.photoBtnTxt}>Elegir foto</Text>}
               </TouchableOpacity>
@@ -491,7 +492,7 @@ export default function StaffBarbersScreen({ navigation }: any) {
             })}
           </View>
 
-          <Text style={styles.sectionTitle}>Horario de atencion</Text>
+          <Text style={styles.sectionTitle}>Horario de atención</Text>
           {DAYS.map((day) => {
             const dayState = schedule[day.key];
             return (
@@ -512,7 +513,7 @@ export default function StaffBarbersScreen({ navigation }: any) {
                     </View>
                   </View>
                 ) : (
-                  <Text style={styles.closedText}>Dia libre</Text>
+                  <Text style={styles.closedText}>Día libre</Text>
                 )}
               </View>
             );
@@ -523,12 +524,12 @@ export default function StaffBarbersScreen({ navigation }: any) {
           </TouchableOpacity>
           {editingBarberId ? (
             <TouchableOpacity style={styles.secondaryBtn} onPress={resetForm}>
-              <Text style={styles.secondaryBtnTxt}>Cancelar edicion</Text>
+              <Text style={styles.secondaryBtnTxt}>Cancelar edición</Text>
             </TouchableOpacity>
           ) : null}
         </View>
       ) : (
-        <Text style={styles.note}>Como barbero, aqui solo puedes revisar la lista.</Text>
+        <Text style={styles.note}>Como barbero, aquí solo puedes revisar la lista.</Text>
       )}
     </>
   );
@@ -555,7 +556,7 @@ export default function StaffBarbersScreen({ navigation }: any) {
                 <TouchableOpacity style={styles.cardActionBtn} onPress={() => startEditing(item)}>
                   <Text style={styles.cardActionTxt}>Editar</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.cardActionBtn, styles.cardDeleteBtn]} onPress={() => void removeBarber(item)}>
+                <TouchableOpacity style={[styles.cardActionBtn, styles.cardDeleteBtn]} onPress={() => setConfirmDelete(item)}>
                   <Text style={styles.cardActionTxt}>Eliminar</Text>
                 </TouchableOpacity>
               </View>
@@ -565,6 +566,20 @@ export default function StaffBarbersScreen({ navigation }: any) {
       </ScrollView>
 
       <AppDialog visible={!!dialog} title={dialog?.title ?? ''} message={dialog?.message ?? ''} onClose={() => setDialog(null)} />
+      <AppDialog
+        visible={!!confirmDelete}
+        title="Eliminar barbero"
+        message={confirmDelete ? `¿Seguro que quieres eliminar a ${confirmDelete.profile_name?.trim() || 'este barbero'}?` : ''}
+        actionLabel="Eliminar"
+        secondaryLabel="Cancelar"
+        destructive
+        onSecondary={() => setConfirmDelete(null)}
+        onClose={() => {
+          const row = confirmDelete;
+          setConfirmDelete(null);
+          if (row) void removeBarber(row);
+        }}
+      />
     </SafeAreaView>
   );
 }

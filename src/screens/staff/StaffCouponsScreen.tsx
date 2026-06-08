@@ -22,6 +22,7 @@ export default function StaffCouponsScreen({ navigation }: any) {
   const [percent, setPercent] = useState('10');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<CouponRow | null>(null);
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('coupons').select('id, code, discount_percent, active').order('created_at', { ascending: false });
@@ -46,7 +47,7 @@ export default function StaffCouponsScreen({ navigation }: any) {
     const discount = Number(percent);
     const cleanCode = code.trim().toUpperCase();
     if (!cleanCode || !Number.isFinite(discount) || discount <= 0 || discount > 100) {
-      setDialog({ title: 'Datos invalidos', message: 'Codigo requerido y porcentaje entre 1 y 100.' });
+      setDialog({ title: 'Datos inválidos', message: 'Código requerido y porcentaje entre 1 y 100.' });
       return;
     }
 
@@ -59,7 +60,7 @@ export default function StaffCouponsScreen({ navigation }: any) {
       const duplicated = /duplicate key|unique constraint/i.test(error.message);
       setDialog({
         title: editingId ? 'No se pudo actualizar' : 'No se pudo crear',
-        message: duplicated ? 'Ya existe un cupon con ese codigo.' : error.message,
+        message: duplicated ? 'Ya existe un cupón con ese código.' : error.message,
       });
       return;
     }
@@ -86,7 +87,7 @@ export default function StaffCouponsScreen({ navigation }: any) {
       return;
     }
     if (editingId === id) resetForm();
-    setDialog({ title: 'Cupon eliminado', message: 'El cupon fue eliminado correctamente.' });
+    setDialog({ title: 'Cupón eliminado', message: 'El cupón fue eliminado correctamente.' });
     void load();
   };
 
@@ -94,15 +95,15 @@ export default function StaffCouponsScreen({ navigation }: any) {
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <StaffScreenHeader title="Cupones" navigation={navigation} />
       <View style={styles.form}>
-        <Text style={styles.formTitle}>{editingId ? 'Editar cupon' : 'Nuevo cupon'}</Text>
-        <TextInput style={styles.input} placeholder="Codigo, ej: PATRON10" placeholderTextColor={colors.subtext} value={code} onChangeText={setCode} autoCapitalize="characters" />
+        <Text style={styles.formTitle}>{editingId ? 'Editar cupón' : 'Nuevo cupón'}</Text>
+        <TextInput style={styles.input} placeholder="Código, ej: PATRON10" placeholderTextColor={colors.subtext} value={code} onChangeText={setCode} autoCapitalize="characters" />
         <TextInput style={styles.input} placeholder="% descuento" placeholderTextColor={colors.subtext} value={percent} onChangeText={setPercent} keyboardType="number-pad" />
         <TouchableOpacity style={styles.btn} onPress={saveCoupon}>
-          <Text style={styles.btnTxt}>{editingId ? 'Guardar cambios' : 'Crear cupon'}</Text>
+          <Text style={styles.btnTxt}>{editingId ? 'Guardar cambios' : 'Crear cupón'}</Text>
         </TouchableOpacity>
         {editingId ? (
           <TouchableOpacity style={styles.secondaryBtn} onPress={resetForm}>
-            <Text style={styles.secondaryBtnTxt}>Cancelar edicion</Text>
+            <Text style={styles.secondaryBtnTxt}>Cancelar edición</Text>
           </TouchableOpacity>
         ) : null}
       </View>
@@ -120,7 +121,7 @@ export default function StaffCouponsScreen({ navigation }: any) {
                 <TouchableOpacity style={styles.iconBtn} onPress={() => startEditing(item)}>
                   <Feather name="edit-2" size={15} color="#fff" />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.iconBtn, styles.deleteBtn]} onPress={() => void removeCoupon(item.id)}>
+                <TouchableOpacity style={[styles.iconBtn, styles.deleteBtn]} onPress={() => setConfirmDelete(item)}>
                   <Feather name="trash-2" size={16} color="#fff" />
                 </TouchableOpacity>
               </View>
@@ -133,6 +134,20 @@ export default function StaffCouponsScreen({ navigation }: any) {
         )}
       />
       <AppDialog visible={!!dialog} title={dialog?.title ?? ''} message={dialog?.message ?? ''} onClose={() => setDialog(null)} />
+      <AppDialog
+        visible={!!confirmDelete}
+        title="Eliminar cupón"
+        message={confirmDelete ? `¿Seguro que quieres eliminar el cupón ${confirmDelete.code}?` : ''}
+        actionLabel="Eliminar"
+        secondaryLabel="Cancelar"
+        destructive
+        onSecondary={() => setConfirmDelete(null)}
+        onClose={() => {
+          const row = confirmDelete;
+          setConfirmDelete(null);
+          if (row) void removeCoupon(row.id);
+        }}
+      />
     </SafeAreaView>
   );
 }
