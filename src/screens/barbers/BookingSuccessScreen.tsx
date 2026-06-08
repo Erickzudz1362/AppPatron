@@ -9,6 +9,7 @@ import { supabase } from '../../config/supabase';
 import { BARBER_WHATSAPP_URL } from '../../constants/contact';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import AppDialog from '../../components/AppDialog';
+import { downloadImageFileOnWeb } from '../../utils/webDownloads';
 
 const QR_FALLBACK = require('../../../assets/icon.png');
 const QR_STORAGE_BUCKET = (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_QR_BUCKET?.trim()) || 'payment-assets';
@@ -66,8 +67,11 @@ export default function BookingSuccessScreen({ navigation, route }: any) {
     if (Platform.OS === 'web') {
       setSavingQr(true);
       try {
-        await downloadQrOnWeb(qrPublicUrl);
+        await downloadImageFileOnWeb(qrPublicUrl, `qr-el-patron-${Date.now()}.png`);
         setDialog({ title: 'QR descargado', message: 'Se inició la descarga del QR de pago.' });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'No se pudo descargar el QR.';
+        setDialog({ title: 'No se pudo descargar', message });
       } finally {
         setSavingQr(false);
       }

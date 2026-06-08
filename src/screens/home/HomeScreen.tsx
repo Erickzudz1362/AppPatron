@@ -9,7 +9,6 @@ import {
   Linking,
   RefreshControl,
   Dimensions,
-  Modal,
   Pressable,
 } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
@@ -417,7 +416,7 @@ export default function HomeScreen({ navigation }: any) {
         </TouchableOpacity>
       </ScrollView>
 
-      <Modal visible={galleryOpen} transparent animationType="fade" onRequestClose={() => setGalleryOpen(false)}>
+      {galleryOpen ? (
         <Pressable style={styles.galleryModalBackdrop} onPress={() => setGalleryOpen(false)}>
           <Pressable style={styles.galleryModalCard} onPress={() => {}}>
             <TouchableOpacity style={styles.galleryCloseBtn} onPress={() => setGalleryOpen(false)}>
@@ -433,7 +432,7 @@ export default function HomeScreen({ navigation }: any) {
             ) : null}
           </Pressable>
         </Pressable>
-      </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -598,7 +597,12 @@ function createStyles(colors: {
       justifyContent: 'center',
     },
     galleryModalBackdrop: {
-      flex: 1,
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      zIndex: 30,
       backgroundColor: 'rgba(0,0,0,0.78)',
       justifyContent: 'center',
       alignItems: 'center',

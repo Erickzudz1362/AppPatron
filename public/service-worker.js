@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-patron-pwa-v8';
+const CACHE_NAME = 'el-patron-pwa-v9';
 const CORE_ASSETS = [
   '/',
   '/manifest.webmanifest',
@@ -29,18 +29,20 @@ self.addEventListener('fetch', (event) => {
   }
 
   const requestUrl = new URL(event.request.url);
+  const isSameOrigin = requestUrl.origin === self.location.origin;
   const isStaticAsset =
-    event.request.destination === 'image' ||
-    event.request.destination === 'font' ||
-    event.request.destination === 'script' ||
-    event.request.destination === 'style' ||
-    requestUrl.pathname.startsWith('/assets/') ||
-    requestUrl.pathname.startsWith('/fonts/') ||
-    requestUrl.pathname.endsWith('.png') ||
-    requestUrl.pathname.endsWith('.jpg') ||
-    requestUrl.pathname.endsWith('.jpeg') ||
-    requestUrl.pathname.endsWith('.webp') ||
-    requestUrl.pathname.endsWith('.ttf');
+    isSameOrigin &&
+    (event.request.destination === 'image' ||
+      event.request.destination === 'font' ||
+      event.request.destination === 'script' ||
+      event.request.destination === 'style' ||
+      requestUrl.pathname.startsWith('/assets/') ||
+      requestUrl.pathname.startsWith('/fonts/') ||
+      requestUrl.pathname.endsWith('.png') ||
+      requestUrl.pathname.endsWith('.jpg') ||
+      requestUrl.pathname.endsWith('.jpeg') ||
+      requestUrl.pathname.endsWith('.webp') ||
+      requestUrl.pathname.endsWith('.ttf'));
 
   if (isStaticAsset) {
     event.respondWith(

@@ -184,10 +184,10 @@ export default function StaffBarbersScreen({ navigation }: any) {
   };
 
   const pickBarberPhoto = async () => {
-    setUploadingPhoto(true);
     try {
       const asset = await pickImageFromGallery();
       if (!asset?.uri) return;
+      setUploadingPhoto(true);
       const extension = asset.fileName?.split('.').pop()?.toLowerCase() || 'jpg';
       const path = `temp/barber-${Date.now()}.${extension}`;
       const publicUrl = await uploadImageFromUri({

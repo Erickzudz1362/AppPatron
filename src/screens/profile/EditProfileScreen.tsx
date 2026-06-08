@@ -99,9 +99,9 @@ export default function EditProfileScreen({ navigation }: { navigation: { goBack
     if (!session?.user?.id) return;
 
     try {
-      setUploadingPhoto(true);
       const asset = await pickImageFromGallery();
       if (!asset?.uri) return;
+      setUploadingPhoto(true);
 
       const extension = asset.mimeType?.includes('png')
         ? 'png'

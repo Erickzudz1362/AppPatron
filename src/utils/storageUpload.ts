@@ -43,13 +43,14 @@ function pickWebImageFromGallery(): Promise<ImagePicker.ImagePickerAsset | null>
     input.type = 'file';
     input.accept = 'image/*';
     input.style.position = 'fixed';
-    input.style.left = '0';
-    input.style.top = '0';
-    input.style.width = '1px';
-    input.style.height = '1px';
-    input.style.opacity = '0.01';
-    input.style.pointerEvents = 'none';
-    input.style.zIndex = '-1';
+    input.style.left = '50%';
+    input.style.top = '50%';
+    input.style.width = '2px';
+    input.style.height = '2px';
+    input.style.opacity = '0.001';
+    input.style.pointerEvents = 'auto';
+    input.style.zIndex = '2147483647';
+    input.style.transform = 'translate(-50%, -50%)';
 
     const cleanup = () => {
       input.remove();
@@ -81,6 +82,14 @@ function pickWebImageFromGallery(): Promise<ImagePicker.ImagePickerAsset | null>
     };
 
     document.body.appendChild(input);
+    if (typeof input.showPicker === 'function') {
+      try {
+        input.showPicker();
+        return;
+      } catch {
+        // Algunos navegadores no permiten showPicker en PWA; click es el fallback.
+      }
+    }
     input.click();
   });
 }

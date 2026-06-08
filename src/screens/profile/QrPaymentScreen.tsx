@@ -18,6 +18,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { supabase } from '../../config/supabase';
+import { downloadImageFileOnWeb } from '../../utils/webDownloads';
 
 const QR_FALLBACK = require('../../../assets/icon.png');
 const QR_STORAGE_BUCKET =
@@ -68,7 +69,7 @@ export default function QrPaymentScreen({ navigation }: { navigation: { goBack: 
     if (Platform.OS === 'web') {
       setSaving(true);
       try {
-        await downloadQrOnWeb(qrPublicUrl);
+        await downloadImageFileOnWeb(qrPublicUrl, `qr-el-patron-${Date.now()}.png`);
         Alert.alert('QR descargado', 'Se inició la descarga del QR de pago.');
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'No se pudo descargar el QR.';
