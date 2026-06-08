@@ -22,10 +22,13 @@ type ProfileResolution = 'idle' | 'loading' | 'done';
 type AuthState = {
   session: Session | null;
   profile: Profile | null;
+  actualRole: UserRole | null;
   role: UserRole | null;
+  adminViewRole: UserRole | null;
   initializing: boolean;
   profileLoadPending: boolean;
   passwordRecovery: boolean;
+  setAdminViewRole: (role: UserRole | null) => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, meta: { name: string; phone: string }) => Promise<void>;
   signOut: () => Promise<void>;
@@ -111,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [initializing, setInitializing] = useState(true);
   const [profileResolution, setProfileResolution] = useState<ProfileResolution>('idle');
   const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [adminViewRole, setAdminViewRole] = useState<UserRole | null>(null);
   const handlingPasswordSignInRef = useRef(false);
   const handlingAuthRedirectRef = useRef(false);
   const hydratingUserIdRef = useRef<string | null>(null);
@@ -194,6 +198,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(null);
         setProfileResolution('idle');
         setPasswordRecovery(false);
+        setAdminViewRole(null);
         return;
       }
 
@@ -271,6 +276,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile(null);
             setProfileResolution('idle');
             setPasswordRecovery(false);
+            setAdminViewRole(null);
           } else {
             if (cachedProfile) {
               setInitializing(false);
@@ -284,6 +290,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(null);
           setProfileResolution('idle');
           setPasswordRecovery(false);
+          setAdminViewRole(null);
         }
       } catch (error) {
         if (isInvalidRefreshSessionError(error)) {
@@ -293,6 +300,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile(null);
             setProfileResolution('idle');
             setPasswordRecovery(false);
+            setAdminViewRole(null);
           }
         } else {
           console.warn('[Auth] init:', error);
@@ -411,6 +419,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(null);
         setProfileResolution('idle');
         setPasswordRecovery(false);
+        setAdminViewRole(null);
       }
     });
 
@@ -537,6 +546,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfile(null);
     setProfileResolution('idle');
     setPasswordRecovery(false);
+    setAdminViewRole(null);
   }, []);
 
   const finishPasswordRecovery = useCallback(
@@ -558,17 +568,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPasswordRecovery(false);
   }, []);
 
-  const role = profile ? parseRole(profile.role) : null;
+  const actualRole = profile ? parseRole(profile.role) : null;
+  const role = actualRole === 'admin' && adminViewRole ? adminViewRole : actualRole;
   const profileLoadPending = !!session?.user && profileResolution === 'loading';
 
   const value = useMemo(
     () => ({
       session,
       profile,
+      actualRole,
       role,
+      adminViewRole,
       initializing,
       profileLoadPending,
       passwordRecovery,
+      setAdminViewRole,
       signIn,
       signUp,
       signOut,
@@ -581,6 +595,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       cancelPasswordRecovery,
       finishPasswordRecovery,
       initializing,
+      actualRole,
+      adminViewRole,
       passwordRecovery,
       profile,
       profileLoadPending,

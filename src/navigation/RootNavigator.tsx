@@ -11,6 +11,7 @@ import VerifyCodeScreen from '../screens/VerifyCodeScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import SessionWithoutProfileScreen from '../screens/SessionWithoutProfileScreen';
 import AppBootSkeletonScreen from '../screens/AppBootSkeletonScreen';
+import AdminRoleSelectScreen from '../screens/AdminRoleSelectScreen';
 import MainTabs from './MainTabs';
 import StaffNavigator from './StaffNavigator';
 import BarberStaffTabs from './BarberStaffTabs';
@@ -60,7 +61,7 @@ function AppNavigationContainer({ children }: { children: React.ReactNode }) {
 }
 
 export function RootNavigator() {
-  const { initializing, session, profile, profileLoadPending, role, passwordRecovery } = useAuth();
+  const { initializing, session, profile, profileLoadPending, actualRole, role, adminViewRole, passwordRecovery } = useAuth();
   const { colors } = useAppTheme();
 
   const stackScreenOptions = {
@@ -109,6 +110,16 @@ export function RootNavigator() {
       <AppNavigationContainer>
         <Stack.Navigator screenOptions={stackScreenOptions}>
           <Stack.Screen name="SessionWithoutProfile" component={SessionWithoutProfileScreen} />
+        </Stack.Navigator>
+      </AppNavigationContainer>
+    );
+  }
+
+  if (actualRole === 'admin' && !adminViewRole) {
+    return (
+      <AppNavigationContainer>
+        <Stack.Navigator screenOptions={stackScreenOptions}>
+          <Stack.Screen name="AdminRoleSelect" component={AdminRoleSelectScreen} />
         </Stack.Navigator>
       </AppNavigationContainer>
     );
