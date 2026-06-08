@@ -12,7 +12,7 @@ import {
   subscribePwaInstallPrompt,
 } from '../pwa/webPwa';
 
-const DISMISSED_KEY = 'el_patron_install_prompt_dismissed';
+const DISMISSED_KEY = 'el_patron_install_prompt_dismissed_v2';
 
 export function PwaInstallPrompt() {
   const { colors } = useAppTheme();
@@ -35,7 +35,7 @@ export function PwaInstallPrompt() {
 
     const cleanupInit = initPwaInstallPromptListener();
     const unsubscribe = subscribePwaInstallPrompt(showIfReady);
-    const timer = window.setTimeout(showIfReady, 900);
+    const timer = window.setTimeout(showIfReady, 120);
 
     return () => {
       cleanupInit();

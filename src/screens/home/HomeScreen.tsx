@@ -35,12 +35,6 @@ const SECOND_CAROUSEL_BUCKET =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_HOME_CAROUSEL_BUCKET?.trim()) ||
   'home-carousel';
 const SECOND_CAROUSEL_FOLDER = 'PromoCarousel';
-const HOME_GALLERY = [
-  require('../../../assets/avatars/avatar-01.png'),
-  require('../../../assets/avatars/avatar-02.png'),
-  require('../../../assets/avatars/avatar-03.png'),
-  require('../../../assets/avatars/avatar-04.png'),
-];
 
 export default function HomeScreen({ navigation }: any) {
   const { colors } = useAppTheme();
@@ -61,11 +55,8 @@ export default function HomeScreen({ navigation }: any) {
   const [secondCarouselSetting, setSecondCarouselSetting] = useState<boolean | null>(null);
   const showSecondCarousel = secondCarouselSetting ?? (data?.showSecondCarousel !== false);
 
-  const gallerySources: ImageSourcePropType[] = useMemo(
-    () =>
-      galleryUrls.length
-        ? galleryUrls.slice(0, galleryVisibleCount).map((url) => ({ uri: url }))
-        : HOME_GALLERY.slice(0, galleryVisibleCount),
+  const gallerySources = useMemo(
+    () => galleryUrls.slice(0, galleryVisibleCount),
     [galleryUrls, galleryVisibleCount]
   );
 
@@ -73,6 +64,11 @@ export default function HomeScreen({ navigation }: any) {
   const [selectedGallery, setSelectedGallery] = useState(0);
   const [galleryFailed, setGalleryFailed] = useState<boolean[]>([false, false, false, false]);
   const [secondCarouselUrls, setSecondCarouselUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    setGalleryFailed([]);
+    setSelectedGallery(0);
+  }, [gallerySources.join('|')]);
 
   const loadSecondCarousel = useMemo(
     () => async () => {
@@ -366,43 +362,45 @@ export default function HomeScreen({ navigation }: any) {
           ))}
         </View>
 
-        <Text style={styles.sectionTitle}>Galeria</Text>
-        <View style={styles.galleryGrid}>
-          {gallerySources.map((image, index) => (
-            <TouchableOpacity
-              key={`gallery-${index}`}
-              activeOpacity={0.9}
-              style={[styles.galleryItem, galleryVisibleCount === 3 && index === 2 ? styles.galleryItemWide : null]}
-              onPress={() => {
-                setSelectedGallery(index);
-                setGalleryOpen(true);
-              }}
-            >
-              {galleryFailed[index] ? (
-                <View style={styles.galleryFallback}>
-                  <Feather name="image" size={18} color={colors.subtext} />
-                  <Text style={styles.galleryFallbackText}>Imagen</Text>
-                </View>
-              ) : typeof image === 'object' && image != null && 'uri' in image ? (
-                <RemoteImage
-                  uri={(image as { uri: string }).uri}
-                  style={styles.galleryImage}
-                  resizeMode="cover"
-                  optimize={{ width: 760, quality: 74 }}
-                  onError={() =>
-                    setGalleryFailed((prev) => {
-                      const next = [...prev];
-                      next[index] = true;
-                      return next;
-                    })
-                  }
-                />
-              ) : (
-                <Image source={image} style={styles.galleryImage} resizeMode="cover" />
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
+        {gallerySources.length ? (
+          <>
+            <Text style={styles.sectionTitle}>Galeria</Text>
+            <View style={styles.galleryGrid}>
+              {gallerySources.map((url, index) => (
+                <TouchableOpacity
+                  key={`gallery-${url}`}
+                  activeOpacity={0.9}
+                  style={[styles.galleryItem, galleryVisibleCount === 3 && index === 2 ? styles.galleryItemWide : null]}
+                  onPress={() => {
+                    setSelectedGallery(index);
+                    setGalleryOpen(true);
+                  }}
+                >
+                  {galleryFailed[index] ? (
+                    <View style={styles.galleryFallback}>
+                      <Feather name="image" size={18} color={colors.subtext} />
+                      <Text style={styles.galleryFallbackText}>Imagen</Text>
+                    </View>
+                  ) : (
+                    <RemoteImage
+                      uri={url}
+                      style={styles.galleryImage}
+                      resizeMode="cover"
+                      optimize={{ width: 760, quality: 74 }}
+                      onError={() =>
+                        setGalleryFailed((prev) => {
+                          const next = [...prev];
+                          next[index] = true;
+                          return next;
+                        })
+                      }
+                    />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        ) : null}
 
         <View style={styles.testimonialCard}>
           <Text style={styles.testimonialLabel}>Acerca de nosotros</Text>
@@ -425,11 +423,14 @@ export default function HomeScreen({ navigation }: any) {
             <TouchableOpacity style={styles.galleryCloseBtn} onPress={() => setGalleryOpen(false)}>
               <Feather name="x" size={18} color="#fff" />
             </TouchableOpacity>
-            <Image
-              source={gallerySources[selectedGallery] ?? HOME_GALLERY[0]}
-              style={styles.galleryModalImage}
-              resizeMode="cover"
-            />
+            {gallerySources[selectedGallery] ? (
+              <RemoteImage
+                uri={gallerySources[selectedGallery]}
+                style={styles.galleryModalImage}
+                resizeMode="cover"
+                optimize={{ width: 1200, quality: 82 }}
+              />
+            ) : null}
           </Pressable>
         </Pressable>
       </Modal>

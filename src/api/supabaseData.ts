@@ -19,7 +19,7 @@ import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../utils/imageUrls'
 
 const warned = new Set<string>();
 const BARBERS_FULL_CACHE_KEY = 'el_patron_barbers_full_v2';
-const HOME_BUNDLE_CACHE_KEY = 'el_patron_home_bundle_v3';
+const HOME_BUNDLE_CACHE_KEY = 'el_patron_home_bundle_v4';
 const BARBERS_FULL_MEMORY_TTL_MS = 15_000;
 let barbersFullMemoryCache: BarberListItem[] | null = null;
 let barbersFullMemoryAt = 0;
