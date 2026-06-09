@@ -9,7 +9,6 @@ import {
   Linking,
   RefreshControl,
   Dimensions,
-  Pressable,
 } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,7 +28,6 @@ import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../../utils/imageUr
 import { RemoteImage } from '../../components/RemoteImage';
 
 const { width } = Dimensions.get('window');
-const MODAL_IMAGE_SIZE = Math.min(width - 24, 420);
 const SECOND_CAROUSEL_BUCKET =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_HOME_CAROUSEL_BUCKET?.trim()) ||
   'home-carousel';
@@ -59,14 +57,11 @@ export default function HomeScreen({ navigation }: any) {
     [galleryUrls, galleryVisibleCount]
   );
 
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [selectedGallery, setSelectedGallery] = useState(0);
   const [galleryFailed, setGalleryFailed] = useState<boolean[]>([false, false, false, false]);
   const [secondCarouselUrls, setSecondCarouselUrls] = useState<string[]>([]);
 
   useEffect(() => {
     setGalleryFailed([]);
-    setSelectedGallery(0);
   }, [gallerySources.join('|')]);
 
   const loadSecondCarousel = useMemo(
@@ -366,14 +361,9 @@ export default function HomeScreen({ navigation }: any) {
             <Text style={styles.sectionTitle}>Galeria</Text>
             <View style={styles.galleryGrid}>
               {gallerySources.map((url, index) => (
-                <TouchableOpacity
+                <View
                   key={`gallery-${url}`}
-                  activeOpacity={0.9}
                   style={[styles.galleryItem, galleryVisibleCount === 3 && index === 2 ? styles.galleryItemWide : null]}
-                  onPress={() => {
-                    setSelectedGallery(index);
-                    setGalleryOpen(true);
-                  }}
                 >
                   {galleryFailed[index] ? (
                     <View style={styles.galleryFallback}>
@@ -395,7 +385,7 @@ export default function HomeScreen({ navigation }: any) {
                       }
                     />
                   )}
-                </TouchableOpacity>
+                </View>
               ))}
             </View>
           </>
@@ -416,23 +406,6 @@ export default function HomeScreen({ navigation }: any) {
         </TouchableOpacity>
       </ScrollView>
 
-      {galleryOpen ? (
-        <Pressable style={styles.galleryModalBackdrop} onPress={() => setGalleryOpen(false)}>
-          <Pressable style={styles.galleryModalCard} onPress={() => {}}>
-            <TouchableOpacity style={styles.galleryCloseBtn} onPress={() => setGalleryOpen(false)}>
-              <Feather name="x" size={18} color="#fff" />
-            </TouchableOpacity>
-            {gallerySources[selectedGallery] ? (
-              <RemoteImage
-                uri={gallerySources[selectedGallery]}
-                style={styles.galleryModalImage}
-                resizeMode="cover"
-                optimize={{ width: 1200, quality: 82 }}
-              />
-            ) : null}
-          </Pressable>
-        </Pressable>
-      ) : null}
     </SafeAreaView>
   );
 }
@@ -595,45 +568,6 @@ function createStyles(colors: {
       borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
-    },
-    galleryModalBackdrop: {
-      position: 'absolute',
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0,
-      zIndex: 30,
-      backgroundColor: 'rgba(0,0,0,0.78)',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 16,
-    },
-    galleryModalCard: {
-      width: MODAL_IMAGE_SIZE,
-      height: MODAL_IMAGE_SIZE,
-      borderRadius: 14,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-      position: 'relative',
-    },
-    galleryCloseBtn: {
-      position: 'absolute',
-      top: 10,
-      right: 10,
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      alignItems: 'center',
-      justifyContent: 'center',
-      zIndex: 2,
-    },
-    galleryModalImage: {
-      width: '100%',
-      height: '100%',
-      backgroundColor: colors.mutedBg,
     },
   });
 }
