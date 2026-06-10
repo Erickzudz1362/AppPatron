@@ -44,13 +44,21 @@ export default function NotificationsScreen() {
   const gutter = width < 360 ? 12 : width < 400 ? 16 : width < 768 ? 20 : 24;
 
   const { colors } = useAppTheme();
-  const { session } = useAuth();
+  const { session, role } = useAuth();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const tabBarHeight = useBottomTabBarHeight();
 
   const { data: remoteNotices, error, refresh, refreshSilently, showSkeleton, isRefreshing } = useAsyncResource(fetchNotices);
   const [data, setData] = useState<NoticeItem[]>([]);
   const [filter, setFilter] = useState<FilterKey>('Todos');
+  const visibleFilters = useMemo<FilterKey[]>(
+    () => (role === 'barber' ? ['Todos', 'Sistema'] : [...FILTERS]),
+    [role]
+  );
+
+  useEffect(() => {
+    if (!visibleFilters.includes(filter)) setFilter('Todos');
+  }, [filter, visibleFilters]);
 
   const markVisibleAsRead = React.useCallback(async (items: NoticeItem[]) => {
     const unread = items.filter((item) => !item.read).map((item) => item.id);
@@ -124,18 +132,28 @@ export default function NotificationsScreen() {
     };
   }, [refreshSilently, session?.user?.id]);
 
+  const roleScopedData = useMemo(() => {
+    if (role === 'barber') return data.filter((item) => item.type === 'sistema');
+    return data;
+  }, [data, role]);
+
   const filtered = useMemo(() => {
     switch (filter) {
       case 'Promos':
-        return data.filter(d => d.type === 'promo');
+        return roleScopedData.filter(d => d.type === 'promo');
       case 'Avisos':
-        return data.filter(d => d.type === 'aviso');
+        return roleScopedData.filter(d => d.type === 'aviso');
       case 'Sistema':
-        return data.filter(d => d.type === 'sistema');
+        return roleScopedData.filter(d => d.type === 'sistema');
       default:
-        return data;
+        return roleScopedData;
     }
-  }, [data, filter]);
+  }, [filter, roleScopedData]);
+
+  const emptySubtitle =
+    role === 'barber'
+      ? 'Cuando tengas reservas o cambios importantes, apareceran aqui.'
+      : 'Cuando haya promociones o novedades, apareceran aqui.';
 
   const markAsRead = async (id: string) => {
     const prev = data;
@@ -253,7 +271,7 @@ export default function NotificationsScreen() {
             <TabScreenHeader title="Avisos" titleColor={colors.primary} />
             {/* Filtros */}
             <FlatList
-              data={FILTERS as unknown as string[]}
+              data={visibleFilters as unknown as string[]}
               keyExtractor={(i) => i}
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -278,7 +296,7 @@ export default function NotificationsScreen() {
           <EmptyState
             icon="bell-off"
             title="No hay avisos"
-            subtitle="Cuando haya promociones o novedades, aparecerán aquí."
+            subtitle={emptySubtitle}
             color={colors}
           />
         }

@@ -1,6 +1,6 @@
 import type { ImageSourcePropType } from 'react-native';
 
-const localBarberImg = require('../../assets/barbers/icon.png');
+const localBarberImg = require('../../assets/app-patron-icon.png');
 
 export type HomeBarber = {
   id: string;

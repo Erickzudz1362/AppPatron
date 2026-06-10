@@ -13,6 +13,10 @@ type OptimizeOptions = {
 export function optimizeSupabaseImageUrl(url: string | null | undefined, options: OptimizeOptions = {}) {
   if (!url || typeof url !== 'string') return url ?? '';
   const trimmed = url.trim();
+  // Supabase image render can return 403 when Storage transform permissions/CDN are not ready.
+  // The app already compresses uploads, so serving the public object is safer for production.
+  return originalSupabaseImageUrl(trimmed);
+  /*
   if (!trimmed.includes(PUBLIC_OBJECT_SEGMENT)) return trimmed;
 
   const [base, existingQuery = ''] = trimmed.split('?');
@@ -23,6 +27,7 @@ export function optimizeSupabaseImageUrl(url: string | null | undefined, options
   params.set('resize', options.resize ?? 'cover');
 
   return `${base.replace(PUBLIC_OBJECT_SEGMENT, PUBLIC_RENDER_SEGMENT)}?${params.toString()}`;
+  */
 }
 
 export function originalSupabaseImageUrl(url: string | null | undefined) {

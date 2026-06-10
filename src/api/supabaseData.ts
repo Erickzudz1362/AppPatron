@@ -4,10 +4,7 @@ import { supabase } from '../config/supabase';
 import { HOME_GALLERY_FOLDER, PROMO_CAROUSEL_BUCKET } from '../utils/storageUpload';
 import {
   DEFAULT_BARBER_AVATAR,
-  FALLBACK_BARBERS_FULL,
   FALLBACK_HISTORY,
-  FALLBACK_HOME_BARBERS,
-  FALLBACK_HOME_SERVICES,
   type BarberListItem,
   type HistoryRow,
   type HomeBarber,
@@ -18,13 +15,12 @@ import { isSupabaseConfigured } from '../utils/supabaseReady';
 import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../utils/imageUrls';
 
 const warned = new Set<string>();
-const BARBERS_FULL_CACHE_KEY = 'el_patron_barbers_full_v2';
-const HOME_BUNDLE_CACHE_KEY = 'el_patron_home_bundle_v4';
+const BARBERS_FULL_CACHE_KEY = 'el_patron_barbers_full_v3';
+const HOME_BUNDLE_CACHE_KEY = 'el_patron_home_bundle_v5';
 const BARBERS_FULL_MEMORY_TTL_MS = 15_000;
 let barbersFullMemoryCache: BarberListItem[] | null = null;
 let barbersFullMemoryAt = 0;
 let servedPersistedBarbersCache = false;
-let servedFastHomeCache = false;
 
 function warnOnce(key: string, message: string) {
   if (warned.has(key)) return;
@@ -67,14 +63,18 @@ function mapServiceRow(r: ServiceRow, index: number): HomeService {
 }
 
 export async function fetchHomeBarbers(): Promise<HomeBarber[]> {
-  if (!isSupabaseConfigured()) return FALLBACK_HOME_BARBERS;
+  if (!isSupabaseConfigured()) return [];
 
-  const { data, error } = await supabase.from('barbers').select('id, user_id, active, specialties').limit(24);
+  const { data, error } = await supabase
+    .from('barbers')
+    .select('id, user_id, active, specialties')
+    .eq('active', true)
+    .limit(24);
   if (error) {
     warnOnce('barbers', error.message);
-    return FALLBACK_HOME_BARBERS;
+    return [];
   }
-  if (!data?.length) return FALLBACK_HOME_BARBERS;
+  if (!data?.length) return [];
 
   const rows = data as BarberRow[];
   const uids = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean))) as string[];
@@ -95,14 +95,14 @@ export async function fetchHomeBarbers(): Promise<HomeBarber[]> {
 }
 
 export async function fetchHomeServices(): Promise<HomeService[]> {
-  if (!isSupabaseConfigured()) return FALLBACK_HOME_SERVICES;
+  if (!isSupabaseConfigured()) return [];
 
   const { data, error } = await supabase.from('services').select('id, name, price').eq('active', true).limit(24);
   if (error) {
     warnOnce('services', error.message);
-    return FALLBACK_HOME_SERVICES;
+    return [];
   }
-  if (!data?.length) return FALLBACK_HOME_SERVICES;
+  if (!data?.length) return [];
 
   return (data as ServiceRow[]).map(mapServiceRow);
 }
@@ -117,26 +117,10 @@ export type HomeBundle = {
   galleryVisibleCount?: number;
 };
 
-async function readPersistedHomeBundleCache(): Promise<HomeBundle | null> {
-  try {
-    const raw = await AsyncStorage.getItem(HOME_BUNDLE_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { items?: HomeBundle };
-    if (!parsed.items?.barbers?.length && !parsed.items?.services?.length) return null;
-    return parsed.items;
-  } catch {
-    return null;
-  }
-}
-
 function writePersistedHomeBundleCache(items: HomeBundle) {
   void AsyncStorage.setItem(HOME_BUNDLE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), items })).catch(
     () => undefined
   );
-}
-
-function wait(ms: number): Promise<'timeout'> {
-  return new Promise((resolve) => setTimeout(() => resolve('timeout'), ms));
 }
 
 async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
@@ -182,12 +166,12 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
   } catch (error) {
     warnOnce('bundle', String(error));
     return {
-      barbers: FALLBACK_HOME_BARBERS,
-      services: FALLBACK_HOME_SERVICES,
+      barbers: [],
+      services: [],
       galleryUrls: [],
       story: undefined,
       testimonial: undefined,
-      showSecondCarousel: true,
+      showSecondCarousel: false,
       galleryVisibleCount: 4,
     };
   }
@@ -198,19 +182,6 @@ export async function fetchHomeBundle(): Promise<HomeBundle> {
     writePersistedHomeBundleCache(bundle);
     return bundle;
   });
-
-  if (!servedFastHomeCache) {
-    const cached = await readPersistedHomeBundleCache();
-    if (cached) {
-      const result = await Promise.race([network, wait(650)]);
-      if (result === 'timeout') {
-        servedFastHomeCache = true;
-        return cached;
-      }
-      servedFastHomeCache = true;
-      return result;
-    }
-  }
 
   return network;
 }
@@ -285,7 +256,7 @@ function writePersistedBarbersCache(items: BarberListItem[]) {
 }
 
 export async function fetchBarbersFull(): Promise<BarberListItem[]> {
-  if (!isSupabaseConfigured()) return FALLBACK_BARBERS_FULL;
+  if (!isSupabaseConfigured()) return [];
 
   const now = Date.now();
   if (barbersFullMemoryCache && now - barbersFullMemoryAt < BARBERS_FULL_MEMORY_TTL_MS) {
@@ -302,12 +273,16 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
     }
   }
 
-  const { data, error } = await supabase.from('barbers').select('id, user_id, active, specialties').limit(40);
+  const { data, error } = await supabase
+    .from('barbers')
+    .select('id, user_id, active, specialties')
+    .eq('active', true)
+    .limit(40);
   if (error) {
     warnOnce('barbers_full', error.message);
-    return FALLBACK_BARBERS_FULL;
+    return [];
   }
-  if (!data?.length) return FALLBACK_BARBERS_FULL;
+  if (!data?.length) return [];
 
   const rows = data as Record<string, unknown>[];
   const uids = Array.from(new Set(rows.map((row) => String(row.user_id ?? '')).filter(Boolean)));

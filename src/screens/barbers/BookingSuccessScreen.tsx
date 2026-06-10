@@ -56,6 +56,8 @@ export default function BookingSuccessScreen({ navigation, route }: any) {
   const selectedDay = route?.params?.selectedDay as { label: string } | undefined;
   const selectedSlot = route?.params?.selectedSlot as { label: string } | undefined;
   const finalTotal = Number(route?.params?.finalTotal ?? 0);
+  const discountAmount = Number(route?.params?.discountAmount ?? 0);
+  const couponCode = typeof route?.params?.couponCode === 'string' ? route.params.couponCode : '';
   const barber = route?.params?.barber as { name: string } | undefined;
 
   const qrPublicUrl = useMemo(() => {
@@ -115,6 +117,7 @@ export default function BookingSuccessScreen({ navigation, route }: any) {
       `Servicios: ${encodeURIComponent(selectedServices.map((service) => service.name).join(' + '))}%0A` +
       `Fecha: ${encodeURIComponent(selectedDay?.label ?? '')}%0A` +
       `Hora: ${encodeURIComponent(selectedSlot?.label ?? '')}%0A` +
+      `Descuento: ${encodeURIComponent(discountAmount > 0 ? `${discountAmount} Bs${couponCode ? ` (${couponCode})` : ''}` : 'No aplicado')}%0A` +
       `Total: ${encodeURIComponent(String(finalTotal))} Bs`;
     const url = `${BARBER_WHATSAPP_URL}?text=${text}`;
     await Linking.openURL(url);

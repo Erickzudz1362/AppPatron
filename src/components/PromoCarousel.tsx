@@ -1,15 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, ScrollView, Image, StyleSheet, ImageSourcePropType, useWindowDimensions } from 'react-native';
+import { View, ScrollView, StyleSheet, ImageSourcePropType, useWindowDimensions } from 'react-native';
 import { supabase } from '../config/supabase';
 import { useAppTheme } from '../theme/ThemeProvider';
 import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../utils/imageUrls';
 import { RemoteImage } from './RemoteImage';
-
-const FALLBACK_BANNERS: ImageSourcePropType[] = [
-  require('../../assets/banners/banner1.jpg'),
-  require('../../assets/banners/banner1.jpg'),
-  require('../../assets/banners/banner1.jpg'),
-];
 
 const HOME_CAROUSEL_BUCKET =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_HOME_CAROUSEL_BUCKET?.trim()) ||
@@ -23,7 +17,8 @@ export default function PromoCarousel() {
   const scrollRef = useRef<ScrollView>(null);
   const [index, setIndex] = useState(0);
   const [containerWidth, setContainerWidth] = useState(Math.max(windowWidth - 32, 280));
-  const [banners, setBanners] = useState<ImageSourcePropType[]>(FALLBACK_BANNERS);
+  const [banners, setBanners] = useState<ImageSourcePropType[]>([]);
+  const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState<boolean[]>([false, false, false]);
 
   useEffect(() => {
@@ -34,12 +29,15 @@ export default function PromoCarousel() {
         sortBy: { column: 'name', order: 'asc' },
       });
 
-      if (error || !mounted) return;
+      if (error || !mounted) {
+        if (mounted) setLoading(false);
+        return;
+      }
 
       const remoteUrls: string[] = [];
-      const resolved = HOME_CAROUSEL_SLOTS.map((slot, slotIndex) => {
+      const resolved = HOME_CAROUSEL_SLOTS.map((slot) => {
         const file = (files ?? []).find((item) => item.name.toLowerCase().startsWith(`${slot}.`));
-        if (!file) return FALLBACK_BANNERS[slotIndex];
+        if (!file) return null;
         const { data } = supabase.storage.from(HOME_CAROUSEL_BUCKET).getPublicUrl(`carousel/${file.name}`);
         const version = encodeURIComponent(String(file.updated_at ?? file.created_at ?? file.name));
         const optimizedUrl = optimizeSupabaseImageUrl(`${data.publicUrl}?v=${version}`, {
@@ -49,11 +47,12 @@ export default function PromoCarousel() {
         });
         remoteUrls.push(optimizedUrl);
         return { uri: optimizedUrl };
-      });
+      }).filter(Boolean) as ImageSourcePropType[];
 
       prefetchImageUrls(remoteUrls);
       setFailed([false, false, false]);
       setBanners(resolved);
+      setLoading(false);
     })();
 
     return () => {
@@ -69,6 +68,8 @@ export default function PromoCarousel() {
     }, 3500);
     return () => clearInterval(id);
   }, [banners.length, containerWidth, index]);
+
+  if (!loading && banners.length === 0) return null;
 
   return (
     <View
@@ -89,12 +90,13 @@ export default function PromoCarousel() {
           setIndex(i);
         }}
       >
-        {banners.map((img, i) => (
+        {(loading ? [null] : banners).map((img, i) => (
           <View key={i} style={[styles.slideFrame, { width: containerWidth, backgroundColor: colors.card }]}>
-            {typeof img === 'object' && img != null && 'uri' in img && !failed[i] ? (
+            {loading ? (
+              <View style={[styles.loadingBlock, { backgroundColor: colors.mutedBg }]} />
+            ) : typeof img === 'object' && img != null && 'uri' in img && !failed[i] ? (
               <RemoteImage
                 uri={(img as { uri: string }).uri}
-                fallbackSource={FALLBACK_BANNERS[i]}
                 style={styles.slideImg}
                 resizeMode="contain"
                 optimize={{ width: 900, quality: 76, resize: 'contain' }}
@@ -107,18 +109,16 @@ export default function PromoCarousel() {
                   });
                 }}
               />
-            ) : (
-              <Image source={FALLBACK_BANNERS[i]} style={styles.slideImg} resizeMode="contain" />
-            )}
+            ) : null}
           </View>
         ))}
       </ScrollView>
 
-      <View style={styles.dots}>
+      {!loading && banners.length > 1 ? <View style={styles.dots}>
         {banners.map((_, i) => (
           <View key={i} style={[styles.dot, i === index && styles.dotActive]} />
         ))}
-      </View>
+      </View> : null}
     </View>
   );
 }
@@ -139,6 +139,11 @@ const styles = StyleSheet.create({
   slideImg: {
     width: '100%',
     height: '100%',
+  },
+  loadingBlock: {
+    width: '86%',
+    height: '72%',
+    borderRadius: 16,
   },
   dots: { position: 'absolute', bottom: 8, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center' },
   dot: { width: 6, height: 6, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.5)', marginHorizontal: 4 },

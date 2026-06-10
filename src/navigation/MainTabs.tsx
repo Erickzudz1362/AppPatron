@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -9,45 +9,21 @@ import BarbersStackNavigator from './BarbersStack';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
 import ProfileStackNavigator from './ProfileStack';
 import { useAppTheme } from '../theme/ThemeProvider';
-import { fetchNotices } from '../api/supabaseData';
-import { supabase } from '../config/supabase';
-import { useAuth } from '../context/AuthContext';
 import { setPwaBadge } from '../pwa/webPwa';
 
 const Tab = createBottomTabNavigator();
 
 export default function MainTabs() {
   const { colors } = useAppTheme();
-  const { session } = useAuth();
   const insets = useSafeAreaInsets();
   const tabBarBottom = Math.max(insets.bottom, 12);
-  const [noticeBadge, setNoticeBadge] = useState(0);
 
   useEffect(() => {
-    let mounted = true;
-    const refreshBadge = async () => {
-      const rows = await fetchNotices().catch(() => []);
-      if (!mounted) return;
-      const count = rows.filter((row) => !row.read).length;
-      setNoticeBadge(count);
-      setPwaBadge(count);
-    };
-
-    void refreshBadge();
-    const interval = setInterval(refreshBadge, 15_000);
-    const channel = supabase
-      .channel(`main-tabs-notice-badge-${session?.user?.id ?? 'anon'}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => void refreshBadge())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notification_reads' }, () => void refreshBadge())
-      .subscribe();
-
+    setPwaBadge(0);
     return () => {
-      mounted = false;
-      clearInterval(interval);
       setPwaBadge(0);
-      void supabase.removeChannel(channel);
     };
-  }, [session?.user?.id]);
+  }, []);
 
   return (
     <Tab.Navigator
@@ -97,7 +73,6 @@ export default function MainTabs() {
         component={NotificationsScreen}
         options={{
           tabBarLabel: 'Avisos',
-          tabBarBadge: noticeBadge > 0 ? noticeBadge : undefined,
           tabBarIcon: ({ color, size }) => <Feather name="bell" color={color} size={size} />,
         }}
       />

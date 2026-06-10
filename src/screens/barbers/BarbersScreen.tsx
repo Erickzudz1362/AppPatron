@@ -14,8 +14,6 @@ import { useAppTheme } from '../../theme/ThemeProvider';
 import { supabase } from '../../config/supabase';
 import { RemoteImage } from '../../components/RemoteImage';
 
-const SPECIALTIES = ['Todos', 'Corte', 'Barba', 'Afeitado', 'Cejas', 'Color'];
-
 export default function BarbersScreen({ navigation, route }: any) {
   const { width } = useWindowDimensions();
   const gutter = width < 360 ? 12 : width < 400 ? 16 : width < 768 ? 20 : 24;
@@ -29,14 +27,22 @@ export default function BarbersScreen({ navigation, route }: any) {
   const [query, setQuery] = useState('');
   const [onlyAvailable, setOnlyAvailable] = useState(true);
   const [selectedSpec, setSelectedSpec] = useState<string>('Todos');
+  const specialties = useMemo(() => {
+    const values = allBarbers.flatMap((barber) => barber.specialties ?? []).map((item) => item.trim()).filter(Boolean);
+    return ['Todos', ...Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, 'es'))];
+  }, [allBarbers]);
 
   React.useEffect(() => {
     const initialSpec = typeof route?.params?.initialSpec === 'string' ? route.params.initialSpec.trim() : '';
-    if (initialSpec && SPECIALTIES.includes(initialSpec)) {
+    if (initialSpec) {
       setSelectedSpec(initialSpec);
       navigation.setParams?.({ initialSpec: undefined });
     }
   }, [navigation, route?.params?.initialSpec]);
+
+  React.useEffect(() => {
+    if (!specialties.includes(selectedSpec)) setSelectedSpec('Todos');
+  }, [selectedSpec, specialties]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -166,7 +172,7 @@ export default function BarbersScreen({ navigation, route }: any) {
         </View>
 
         <FlatList
-          data={SPECIALTIES}
+          data={specialties}
           keyExtractor={(item) => item}
           horizontal
           showsHorizontalScrollIndicator={false}

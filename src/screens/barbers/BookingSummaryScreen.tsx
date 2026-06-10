@@ -134,6 +134,8 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
         selectedServices,
         durationMin,
         finalTotal: resolvedTotal,
+        discountAmount: resolvedDiscount,
+        couponCode: coupon.trim().toUpperCase() || null,
       });
 
       void (async () => {

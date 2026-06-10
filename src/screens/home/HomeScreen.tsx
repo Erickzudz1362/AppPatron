@@ -301,7 +301,7 @@ export default function HomeScreen({ navigation }: any) {
               {secondCarouselSources.map((source, index) => (
                 <View key={`promo-slide-${index}`} style={styles.promoCard}>
                   {typeof source === 'object' && source != null && 'uri' in source ? (
-                    <RemoteImage uri={(source as { uri: string }).uri} style={styles.promoImage} resizeMode="cover" optimize={{ width: 760, quality: 74 }} />
+                    <RemoteImage uri={(source as { uri: string }).uri} style={styles.promoImage} resizeMode="contain" optimize={{ width: 760, quality: 74, resize: 'contain' }} />
                   ) : (
                     <Image source={source} style={styles.promoImage} resizeMode="cover" />
                   )}

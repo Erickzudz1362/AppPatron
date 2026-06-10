@@ -548,15 +548,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      await clearLocalAuthSession();
-    }
     setSession(null);
     setProfile(null);
     setProfileResolution('idle');
     setPasswordRecovery(false);
     setAdminViewRole(null);
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) {
+      await clearLocalAuthSession();
+    }
   }, []);
 
   const finishPasswordRecovery = useCallback(
