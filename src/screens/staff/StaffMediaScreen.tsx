@@ -59,6 +59,7 @@ export default function StaffMediaScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
   const [story, setStory] = useState('');
   const [testimonial, setTestimonial] = useState('');
+  const [showMainCarousel, setShowMainCarousel] = useState(true);
   const [showSecondCarousel, setShowSecondCarousel] = useState(true);
   const [galleryVisibleCount, setGalleryVisibleCount] = useState(4);
   const [mainSlides, setMainSlides] = useState<SlidePreviewItem[]>([]);
@@ -77,7 +78,7 @@ export default function StaffMediaScreen({ navigation }: any) {
     const settingsPromise = supabase
       .from('app_settings')
       .select('key, value')
-      .in('key', ['home_story', 'home_testimonial', 'show_second_carousel', 'home_gallery_visible_count']);
+      .in('key', ['home_story', 'home_testimonial', 'show_main_carousel', 'show_second_carousel', 'home_gallery_visible_count']);
 
     const [settingsRes, promoUrls, galleryUrls, carouselRes] = await Promise.all([
       settingsPromise,
@@ -93,6 +94,7 @@ export default function StaffMediaScreen({ navigation }: any) {
       const pick = (key: string) => rows.find((row) => row.key === key)?.value ?? '';
       setStory(pick('home_story'));
       setTestimonial(pick('home_testimonial'));
+      setShowMainCarousel(pick('show_main_carousel') === '' ? true : pick('show_main_carousel') === 'true');
       setShowSecondCarousel(pick('show_second_carousel') === '' ? true : pick('show_second_carousel') === 'true');
       const parsedVisibleCount = Number.parseInt(pick('home_gallery_visible_count') || '4', 10);
       setGalleryVisibleCount(parsedVisibleCount >= 2 && parsedVisibleCount <= 4 ? parsedVisibleCount : 4);
@@ -112,9 +114,16 @@ export default function StaffMediaScreen({ navigation }: any) {
     );
 
     const carouselFiles = (carouselRes.data ?? []).filter((file) => !!file.name);
-    const slidePreviews = MAIN_CAROUSEL_SLOTS.map((slot, index) => {
+    const slidePreviews = MAIN_CAROUSEL_SLOTS.map((slot) => {
       const matchedFile = carouselFiles.find((file) => file.name.toLowerCase().startsWith(`${slot}.`));
-      const path = `${HOME_MAIN_CAROUSEL_FOLDER}/${matchedFile?.name ?? `${slot}.${index === 2 ? 'png' : 'jpg'}`}`;
+      if (!matchedFile) {
+        return {
+          slot,
+          path: `${HOME_MAIN_CAROUSEL_FOLDER}/${slot}.webp`,
+          url: '',
+        };
+      }
+      const path = `${HOME_MAIN_CAROUSEL_FOLDER}/${matchedFile.name}`;
       const { data } = supabase.storage.from(PROMO_CAROUSEL_BUCKET).getPublicUrl(path);
       return {
         slot,
@@ -123,6 +132,24 @@ export default function StaffMediaScreen({ navigation }: any) {
       };
     });
     setMainSlides(slidePreviews);
+  };
+
+  const persistMainCarousel = async (value: boolean) => {
+    setShowMainCarousel(value);
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ key: 'show_main_carousel', value: String(value) }, { onConflict: 'key' });
+
+    if (error) {
+      setShowMainCarousel(!value);
+      setDialog({ title: 'No se pudo guardar', message: error.message });
+      return;
+    }
+
+    setDialog({
+      title: 'Guardado',
+      message: value ? 'El carrusel principal se mostrara en el inicio.' : 'El carrusel principal fue ocultado del inicio.',
+    });
   };
 
   useEffect(() => {
@@ -370,9 +397,26 @@ export default function StaffMediaScreen({ navigation }: any) {
         <View style={styles.card}>
           <Text style={styles.h}>Carrusel principal</Text>
           <Text style={styles.t}>Estas tres imagenes aparecen en la parte superior del inicio.</Text>
+          <View style={styles.switchRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.t}>Mostrar carrusel principal</Text>
+              <Text style={styles.small}>Si lo desactivas, desaparece por completo del inicio.</Text>
+            </View>
+            <Switch
+              value={showMainCarousel}
+              onValueChange={(value) => void persistMainCarousel(value)}
+              trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
           {mainSlides.map((slide, index) => (
             <View key={slide.path} style={styles.mediaRow}>
-              <Image source={{ uri: slide.url }} style={styles.preview} />
+              {slide.url ? (
+                <Image source={{ uri: slide.url }} style={styles.preview} />
+              ) : (
+                <View style={[styles.preview, styles.previewEmpty]}>
+                  <Feather name="image" size={20} color={colors.subtext} />
+                </View>
+              )}
               <View style={styles.mediaInfo}>
                 <Text style={styles.mediaTitle}>Slide {index + 1}</Text>
                 <TouchableOpacity
@@ -604,6 +648,7 @@ function createStyles(colors: { primary: string; background: string; card: strin
     mediaInfo: { flex: 1, gap: 8 },
     mediaTitle: { color: colors.text, fontWeight: '700' },
     preview: { width: 110, height: 76, borderRadius: 12, backgroundColor: colors.border },
+    previewEmpty: { alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
     btn: {
       minHeight: 46,
       borderRadius: 12,

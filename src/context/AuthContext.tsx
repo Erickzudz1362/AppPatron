@@ -48,7 +48,7 @@ function isInvalidRefreshSessionError(err: unknown): boolean {
 }
 
 async function clearLocalAuthSession(): Promise<void> {
-  await supabase.auth.signOut({ scope: 'local' });
+  await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
 }
 
 function delay(ms: number): Promise<void> {
@@ -221,13 +221,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }, 1500);
       try {
-        let ok = await loadProfileWithRetry(nextSession.user.id);
+        let ok =
+          (await Promise.race([
+            loadProfileWithRetry(nextSession.user.id),
+            timeout(1800).then(() => false),
+          ])) === true;
         if (!ok) {
-          const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
-          if (!refreshErr && refreshed.session?.user?.id === nextSession.user.id) {
+          const refreshResult = await Promise.race([
+            supabase.auth.refreshSession(),
+            timeout(1200).then(() => null),
+          ]);
+          const refreshed = refreshResult && 'data' in refreshResult ? refreshResult.data : null;
+          const refreshErr = refreshResult && 'error' in refreshResult ? refreshResult.error : null;
+          if (!refreshErr && refreshed?.session?.user?.id === nextSession.user.id) {
             setSession(refreshed.session);
-            ok = await loadProfileWithRetry(nextSession.user.id);
+            ok =
+              (await Promise.race([
+                loadProfileWithRetry(nextSession.user.id),
+                timeout(1600).then(() => false),
+              ])) === true;
           }
+        }
+        if (!ok && !profileRef.current) {
+          setProfile(buildTemporaryProfileFromSession(nextSession));
         }
       } finally {
         clearTimeout(fallbackTimer);
@@ -265,9 +281,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
 
       try {
-        const {
-          data: { session: currentSession },
-        } = await supabase.auth.getSession();
+        const sessionResult = await Promise.race([
+          supabase.auth.getSession(),
+          timeout(1800).then(() => null),
+        ]);
+        const currentSession = sessionResult?.data.session ?? null;
         if (!mounted) return;
 
         if (currentSession?.user) {
@@ -278,7 +296,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfileResolution('done');
           }
 
-          const { error: userErr } = await supabase.auth.getUser();
+          const userResult = await Promise.race([
+            supabase.auth.getUser(),
+            timeout(1200).then(() => null),
+          ]);
+          const userErr = userResult?.error ?? null;
           if (userErr && isInvalidRefreshSessionError(userErr)) {
             await clearLocalAuthSession();
             if (!mounted) return;
@@ -553,10 +575,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setProfileResolution('idle');
     setPasswordRecovery(false);
     setAdminViewRole(null);
-    const { error } = await supabase.auth.signOut({ scope: 'local' });
-    if (error) {
-      await clearLocalAuthSession();
-    }
+    void clearLocalAuthSession();
   }, []);
 
   const finishPasswordRecovery = useCallback(

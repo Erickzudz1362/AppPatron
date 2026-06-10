@@ -477,7 +477,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
                 <View style={styles.cardBody}>
                   <View style={styles.cardHeaderRow}>
                     <View style={styles.cardHeaderText}>
-                      <Text style={styles.rowTitle}>{client?.name?.trim() || 'Cliente sin nombre'}</Text>
+                      <Text style={styles.rowTitle}>{client?.name?.trim() || `Cliente ${item.client_id.slice(0, 8)}`}</Text>
                       <Text style={styles.metaStrong}>
                         {isBarberTab ? 'Reserva del dia' : `Reserva · ${item.id.slice(0, 8)}`}
                       </Text>

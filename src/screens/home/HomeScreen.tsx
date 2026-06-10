@@ -50,6 +50,7 @@ export default function HomeScreen({ navigation }: any) {
   const testimonialText =
     data?.testimonial ?? 'Atención profesional, puntual y con excelente ambiente.';
   const [secondCarouselSetting, setSecondCarouselSetting] = useState<boolean | null>(null);
+  const showMainCarousel = data?.showMainCarousel !== false;
   const showSecondCarousel = secondCarouselSetting ?? (data?.showSecondCarousel !== false);
 
   const gallerySources = useMemo(
@@ -220,7 +221,7 @@ export default function HomeScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        <PromoCarousel />
+        {showMainCarousel ? <PromoCarousel /> : null}
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Barberos disponibles</Text>

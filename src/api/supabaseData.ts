@@ -114,6 +114,7 @@ export type HomeBundle = {
   story?: string;
   testimonial?: string;
   showSecondCarousel?: boolean;
+  showMainCarousel?: boolean;
   galleryVisibleCount?: number;
 };
 
@@ -131,7 +132,7 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
       supabase
         .from('app_settings')
         .select('key, value')
-        .in('key', ['home_story', 'home_testimonial', 'show_second_carousel', 'home_gallery_visible_count']),
+        .in('key', ['home_story', 'home_testimonial', 'show_main_carousel', 'show_second_carousel', 'home_gallery_visible_count']),
       supabase.storage.from(PROMO_CAROUSEL_BUCKET).list(HOME_GALLERY_FOLDER, {
         limit: 12,
         sortBy: { column: 'name', order: 'asc' },
@@ -159,6 +160,7 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
       galleryUrls,
       story: pick('home_story') || undefined,
       testimonial: pick('home_testimonial') || undefined,
+      showMainCarousel: pick('show_main_carousel') === '' ? true : pick('show_main_carousel') === 'true',
       showSecondCarousel: pick('show_second_carousel') === '' ? true : pick('show_second_carousel') === 'true',
       galleryVisibleCount:
         parsedGalleryVisibleCount >= 2 && parsedGalleryVisibleCount <= 4 ? parsedGalleryVisibleCount : 4,
@@ -171,6 +173,7 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
       galleryUrls: [],
       story: undefined,
       testimonial: undefined,
+      showMainCarousel: false,
       showSecondCarousel: false,
       galleryVisibleCount: 4,
     };
