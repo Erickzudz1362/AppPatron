@@ -3,7 +3,7 @@ import { FlatList, Image, Platform, RefreshControl, StyleSheet, Switch, Text, Te
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { TabScreenHeader } from '../../components/TabScreenHeader';
 import { BarbersListSkeleton } from '../../components/skeleton/BarbersListSkeleton';
 import { EmptyState } from '../../components/EmptyState';
@@ -23,6 +23,7 @@ export default function BarbersScreen({ navigation, route }: any) {
 
   const { data: barbersData, error, refresh, refreshSilently, showSkeleton, isRefreshing } = useAsyncResource(fetchBarbersFull);
   const allBarbers = barbersData ?? [];
+  const refreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [query, setQuery] = useState('');
   const [onlyAvailable, setOnlyAvailable] = useState(true);
@@ -67,7 +68,10 @@ export default function BarbersScreen({ navigation, route }: any) {
 
   React.useEffect(() => {
     const refreshSoon = () => {
-      void refreshSilently();
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => {
+        void refreshSilently();
+      }, 350);
     };
 
     const barbersChannel = supabase
@@ -78,6 +82,7 @@ export default function BarbersScreen({ navigation, route }: any) {
       .subscribe();
 
     return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       void supabase.removeChannel(barbersChannel);
     };
   }, [refreshSilently]);

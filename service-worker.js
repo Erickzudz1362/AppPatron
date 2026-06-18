@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-patron-pwa-v9';
+const CACHE_NAME = 'el-patron-pwa-v11';
 const CORE_ASSETS = [
   '/',
   '/manifest.webmanifest',
@@ -44,6 +44,11 @@ self.addEventListener('fetch', (event) => {
       requestUrl.pathname.endsWith('.webp') ||
       requestUrl.pathname.endsWith('.ttf'));
 
+  if (!isSameOrigin) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   if (isStaticAsset) {
     event.respondWith(
       caches.match(event.request).then((cached) => {
@@ -66,7 +71,7 @@ self.addEventListener('fetch', (event) => {
   if (event.request.mode === 'navigate') {
     event.respondWith(
       caches.match('/').then((cached) => {
-        const network = fetch(event.request)
+        const network = fetch(event.request, { cache: 'no-store' })
           .then((response) => {
             if (response.ok) {
               const copy = response.clone();
@@ -82,17 +87,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => undefined);
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/')))
-  );
+  event.respondWith(fetch(event.request));
 });
 
 self.addEventListener('push', (event) => {

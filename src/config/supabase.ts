@@ -12,13 +12,13 @@ const rawSupabaseAnonKey =
   extra?.supabaseAnonKey ||
   'TU_KEY_AQUI';
 
-const supabaseUrl = /^https?:\/\//i.test(String(rawSupabaseUrl))
+export const supabaseUrl = /^https?:\/\//i.test(String(rawSupabaseUrl))
   ? String(rawSupabaseUrl)
   : 'https://example.supabase.co';
-const supabaseAnonKey = String(rawSupabaseAnonKey || 'public-anon-placeholder');
+export const supabaseAnonKey = String(rawSupabaseAnonKey || 'public-anon-placeholder');
 
 /** Ref del proyecto (subdominio) para que la clave en AsyncStorage no mezcle sesiones entre proyectos. */
-function supabaseProjectRef(url: string): string {
+export function supabaseProjectRef(url: string): string {
   try {
     const host = new URL(url).hostname;
     return host.split('.')[0] || 'default';
@@ -27,10 +27,12 @@ function supabaseProjectRef(url: string): string {
   }
 }
 
+export const supabaseAuthStorageKey = `sb-${supabaseProjectRef(supabaseUrl)}-auth-token`;
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: AsyncStorage,
-    storageKey: `sb-${supabaseProjectRef(supabaseUrl)}-auth-token`,
+    storageKey: supabaseAuthStorageKey,
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,

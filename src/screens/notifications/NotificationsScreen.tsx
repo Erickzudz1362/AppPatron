@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { TabScreenHeader } from '../../components/TabScreenHeader';
 import { NoticesListSkeleton } from '../../components/skeleton/NoticesListSkeleton';
 import { EmptyState } from '../../components/EmptyState';
@@ -38,6 +38,8 @@ const LABELS: Record<NoticeItem['type'], 'Promo' | 'Aviso' | 'Sistema'> = {
   aviso: 'Aviso',
   sistema: 'Sistema',
 };
+
+let notificationReadsWritable: boolean | null = null;
 
 export default function NotificationsScreen() {
   const { width } = useWindowDimensions();
@@ -67,10 +69,18 @@ export default function NotificationsScreen() {
 
     const uid = session?.user?.id;
     if (!uid) return;
+    if (notificationReadsWritable === false) return;
     const { error } = await supabase
       .from('notification_reads')
-      .upsert(unread.map((notification_id) => ({ user_id: uid, notification_id })), { onConflict: 'user_id,notification_id' });
-    if (error) console.warn('[Notifications] markVisibleAsRead:', error.message);
+      .upsert(unread.map((notification_id) => ({ user_id: uid, notification_id })), {
+        onConflict: 'user_id,notification_id',
+        ignoreDuplicates: true,
+      });
+    if (error) {
+      notificationReadsWritable = false;
+      return;
+    }
+    notificationReadsWritable = true;
   }, [session?.user?.id]);
 
   useEffect(() => {
@@ -89,20 +99,6 @@ export default function NotificationsScreen() {
     void markVisibleAsRead(data);
   }, [data, markVisibleAsRead]);
 
-  // Auto refresh en la misma vista (fallback estable aunque Realtime falle).
-  useEffect(() => {
-    const id = setInterval(() => {
-      // Refresco silencioso: actualiza datos sin activar el spinner de RefreshControl.
-      void fetchNotices()
-        .then((rows) => {
-          setData(rows);
-        })
-        .catch(() => {
-          // Sin ruido visual ni alertas en auto-refresh periódico.
-        });
-    }, 4000);
-    return () => clearInterval(id);
-  }, []);
 
   // Realtime: si el admin crea/edita/elimina avisos en Supabase, recarga automáticamente.
   useEffect(() => {
@@ -173,8 +169,15 @@ export default function NotificationsScreen() {
 
       const { error } = await supabase
         .from('notification_reads')
-        .upsert({ user_id: uid, notification_id: id }, { onConflict: 'user_id,notification_id' });
-      if (error) throw error;
+        .upsert({ user_id: uid, notification_id: id }, {
+          onConflict: 'user_id,notification_id',
+          ignoreDuplicates: true,
+        });
+      if (error) {
+        notificationReadsWritable = false;
+        return;
+      }
+      notificationReadsWritable = true;
     } catch (e) {
       // Revertir en caso de fallo para no mostrar estado incorrecto.
       setData(prev);
@@ -204,7 +207,7 @@ export default function NotificationsScreen() {
       <Text style={styles.msg}>{item.message}</Text>
 
       {/* Acciones */}
-      <View style={styles.actions}>
+      <View style={[styles.actions, styles.hiddenActions]}>
         <TouchableOpacity
           onPress={() => markAsRead(item.id)}
           style={styles.linkBtn}
@@ -364,6 +367,7 @@ function createStyles(colors: {
     msg: { marginTop: 4, color: colors.text, opacity: 0.9, lineHeight: 20 },
 
     actions: { marginTop: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    hiddenActions: { display: 'none' },
     linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     linkTxt: { fontWeight: '700' },
 

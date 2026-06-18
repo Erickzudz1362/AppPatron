@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 // que en Expo Go Android SDK 53+ dispara console.error y la pantalla roja de desarrollo.
 import { setNotificationHandler } from 'expo-notifications/build/NotificationsHandler';
 import * as Font from 'expo-font';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 
 import { AuthProvider } from './src/context/AuthContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -37,10 +37,16 @@ export default function App() {
 
   useEffect(() => {
     let mounted = true;
+    const fallback = setTimeout(() => {
+      if (mounted) {
+        setIconsReady(true);
+      }
+    }, 450);
 
     Font.loadAsync(Feather.font)
       .catch(() => undefined)
       .finally(() => {
+        clearTimeout(fallback);
         if (mounted) {
           setIconsReady(true);
         }
@@ -48,6 +54,7 @@ export default function App() {
 
     return () => {
       mounted = false;
+      clearTimeout(fallback);
     };
   }, []);
 

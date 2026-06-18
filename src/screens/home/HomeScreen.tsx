@@ -14,7 +14,7 @@ import type { ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import PromoCarousel from '../../components/PromoCarousel';
 import { HomeSkeleton } from '../../components/skeleton/HomeSkeleton';
 import { EmptyState } from '../../components/EmptyState';
@@ -33,6 +33,22 @@ const SECOND_CAROUSEL_BUCKET =
   'home-carousel';
 const SECOND_CAROUSEL_FOLDER = 'PromoCarousel';
 
+// TTL cache de segundo carrusel: 5 minutos entre re-fetches.
+const SECOND_CAROUSEL_TTL_MS = 5 * 60 * 1000;
+let cachedSecondCarouselUrls: string[] = [];
+let cachedSecondCarouselAt = 0;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), ms);
+  });
+
+  return Promise.race([promise.catch(() => null), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
 export default function HomeScreen({ navigation }: any) {
   const { colors } = useAppTheme();
   const { profile } = useAuth();
@@ -49,9 +65,7 @@ export default function HomeScreen({ navigation }: any) {
     'EL PATRON BARBERIA\nSince 2022\nDedicado a los hombres que huyen de los estereotipos, alejados de los roles de masculinidad que tan poco se llevan en esta epoca, El Patron es un concept store ubicado en el corazon de Bolivia que auna en un solo espacio barberia y tienda de moda y complementos. La idea es que el cliente se sienta como en casa, por eso el local esta decorado como si fuera un apartamento de soltero, donde se mezcla con otros espacios como (Futbol TV, Buena Musica, Barra Bar, Videojuegos, PlayStation). Entre los servicios de barberia, mejor con cita previa, la carta ofrece corte de pelo premium + lavado y peinado, hasta afeitado clasico a navaja, sin olvidar los packs, como el corte de pelo y arreglo de barba premium, entre otros servicios mas.';
   const testimonialText =
     data?.testimonial ?? 'Atención profesional, puntual y con excelente ambiente.';
-  const [secondCarouselSetting, setSecondCarouselSetting] = useState<boolean | null>(null);
-  const showMainCarousel = data?.showMainCarousel !== false;
-  const showSecondCarousel = secondCarouselSetting ?? (data?.showSecondCarousel !== false);
+  const showSecondCarousel = data?.showSecondCarousel === true;
 
   const gallerySources = useMemo(
     () => galleryUrls.slice(0, galleryVisibleCount),
@@ -60,23 +74,31 @@ export default function HomeScreen({ navigation }: any) {
 
   const [galleryFailed, setGalleryFailed] = useState<boolean[]>([false, false, false, false]);
   const [secondCarouselUrls, setSecondCarouselUrls] = useState<string[]>([]);
+  const realtimeRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setGalleryFailed([]);
   }, [gallerySources.join('|')]);
 
   const loadSecondCarousel = useMemo(
-    () => async () => {
-      const { data: files, error: listError } = await supabase.storage
-        .from(SECOND_CAROUSEL_BUCKET)
-        .list(SECOND_CAROUSEL_FOLDER, {
+    () => async (force = false) => {
+      const now = Date.now();
+      if (!force && cachedSecondCarouselUrls.length && now - cachedSecondCarouselAt < SECOND_CAROUSEL_TTL_MS) {
+        setSecondCarouselUrls(cachedSecondCarouselUrls);
+        return;
+      }
+
+      const result = await withTimeout(
+        supabase.storage.from(SECOND_CAROUSEL_BUCKET).list(SECOND_CAROUSEL_FOLDER, {
           limit: 12,
           sortBy: { column: 'name', order: 'asc' },
-        });
+        }),
+        1500
+      );
 
-      if (listError) return;
+      if (!result || result.error) return;
 
-      const urls = (files ?? [])
+      const urls = (result.data ?? [])
         .filter((file) => !!file.name && !file.name.endsWith('/'))
         .map((file) => {
           const { data: publicUrl } = supabase.storage
@@ -91,21 +113,10 @@ export default function HomeScreen({ navigation }: any) {
         })
         .filter(Boolean);
 
+      cachedSecondCarouselUrls = urls;
+      cachedSecondCarouselAt = Date.now();
       prefetchImageUrls(urls);
       setSecondCarouselUrls(urls);
-    },
-    []
-  );
-
-  const loadSecondCarouselSetting = useMemo(
-    () => async () => {
-      const { data: setting } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'show_second_carousel')
-        .maybeSingle();
-      const value = typeof setting?.value === 'string' ? setting.value.trim().toLowerCase() : '';
-      setSecondCarouselSetting(value === '' ? true : value === 'true');
     },
     []
   );
@@ -124,39 +135,46 @@ export default function HomeScreen({ navigation }: any) {
     return '30-40 min';
   };
 
-  const openMap = () => Linking.openURL('https://maps.app.goo.gl/Mbdp1fUKbBgX7m336');
-  const openLink = (url: string) => Linking.openURL(url);
+  const whatsappUrl = data?.whatsappUrl || 'https://wa.me/59165358449';
+  const instagramUrl = data?.instagramUrl || 'https://www.instagram.com/elpatronbol?utm_source=ig_web_button_share_sheet&igsh=cmwyYTg5aXdmOTh1';
+  const facebookUrl = data?.facebookUrl || 'https://facebook.com';
+  const mapsUrl = data?.mapsUrl || 'https://maps.app.goo.gl/Mbdp1fUKbBgX7m336';
+
+  const openMap = () => void Linking.openURL(mapsUrl);
+  const openLink = (url: string) => void Linking.openURL(url);
 
   useEffect(() => {
-    void loadSecondCarouselSetting();
     if (!showSecondCarousel) {
       setSecondCarouselUrls([]);
       return;
     }
     void loadSecondCarousel();
-  }, [loadSecondCarousel, loadSecondCarouselSetting, showSecondCarousel]);
+  }, [loadSecondCarousel, showSecondCarousel]);
 
   useFocusEffect(
     React.useCallback(() => {
       void refreshSilently();
-      void loadSecondCarouselSetting();
       if (showSecondCarousel) {
         void loadSecondCarousel();
       } else {
         setSecondCarouselUrls([]);
       }
-    }, [loadSecondCarousel, loadSecondCarouselSetting, refreshSilently, showSecondCarousel])
+    }, [loadSecondCarousel, refreshSilently, showSecondCarousel])
   );
 
   useEffect(() => {
     const refreshSoon = () => {
-      void refreshSilently();
-      void loadSecondCarouselSetting();
-      if (showSecondCarousel) {
-        void loadSecondCarousel();
-      } else {
-        setSecondCarouselUrls([]);
-      }
+      if (realtimeRefreshTimerRef.current) clearTimeout(realtimeRefreshTimerRef.current);
+      realtimeRefreshTimerRef.current = setTimeout(() => {
+        void refreshSilently();
+        if (showSecondCarousel) {
+          void loadSecondCarousel(true);
+        } else {
+          cachedSecondCarouselUrls = [];
+          cachedSecondCarouselAt = 0;
+          setSecondCarouselUrls([]);
+        }
+      }, 350);
     };
 
     const homeChannel = supabase
@@ -168,9 +186,10 @@ export default function HomeScreen({ navigation }: any) {
       .subscribe();
 
     return () => {
+      if (realtimeRefreshTimerRef.current) clearTimeout(realtimeRefreshTimerRef.current);
       void supabase.removeChannel(homeChannel);
     };
-  }, [loadSecondCarousel, loadSecondCarouselSetting, refreshSilently, showSecondCarousel]);
+  }, [loadSecondCarousel, refreshSilently, showSecondCarousel]);
 
   const secondCarouselSources: ImageSourcePropType[] = useMemo(
     () => secondCarouselUrls.map((url) => ({ uri: url })),
@@ -221,7 +240,7 @@ export default function HomeScreen({ navigation }: any) {
           </TouchableOpacity>
         </View>
 
-        {showMainCarousel ? <PromoCarousel /> : null}
+        <PromoCarousel />
 
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Barberos disponibles</Text>
@@ -326,13 +345,13 @@ export default function HomeScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
           <View style={styles.socialRow}>
-            <TouchableOpacity onPress={() => openLink('https://www.instagram.com/elpatronbol?utm_source=ig_web_button_share_sheet&igsh=cmwyYTg5aXdmOTh1')}>
+            <TouchableOpacity onPress={() => openLink(instagramUrl)}>
               <Feather name="instagram" size={22} color={colors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => openLink('https://facebook.com')}>
+            <TouchableOpacity onPress={() => openLink(facebookUrl)}>
               <Feather name="facebook" size={22} color={colors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => openLink('https://wa.me/59165358449')}>
+            <TouchableOpacity onPress={() => openLink(whatsappUrl)}>
               <Feather name="message-circle" size={22} color={colors.primary} />
             </TouchableOpacity>
           </View>

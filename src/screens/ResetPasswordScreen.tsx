@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { createAuthLayoutStyles } from '../auth/authLayoutStyles';
 import AppDialog from '../components/AppDialog';
 import { useAuth } from '../context/AuthContext';

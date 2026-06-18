@@ -41,7 +41,7 @@ function pickWebImageFromGallery(): Promise<ImagePicker.ImagePickerAsset | null>
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
+    input.accept = 'image/png,image/jpeg,image/webp';
     input.style.position = 'fixed';
     input.style.left = '50%';
     input.style.top = '50%';
@@ -82,15 +82,21 @@ function pickWebImageFromGallery(): Promise<ImagePicker.ImagePickerAsset | null>
     };
 
     document.body.appendChild(input);
+    try {
+      input.click();
+      return;
+    } catch {
+      // Algunos navegadores instalan PWA con un flujo distinto; showPicker queda como fallback.
+    }
+
     if (typeof input.showPicker === 'function') {
       try {
         input.showPicker();
-        return;
       } catch {
-        // Algunos navegadores no permiten showPicker en PWA; click es el fallback.
+        cleanup();
+        resolve(null);
       }
     }
-    input.click();
   });
 }
 

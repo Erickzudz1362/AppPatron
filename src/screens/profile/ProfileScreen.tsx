@@ -18,7 +18,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import type { CompositeNavigationProp } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { TabScreenHeader } from '../../components/TabScreenHeader';
 import { ProfileAvatar } from '../../components/ProfileAvatar';
 import { useAuth } from '../../context/AuthContext';

@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { TabScreenHeader } from '../../components/TabScreenHeader';
 import { HistoryListSkeleton } from '../../components/skeleton/HistoryListSkeleton';
 import { EmptyState } from '../../components/EmptyState';
@@ -78,6 +78,7 @@ export default function HistoryScreen() {
   const gutter = width < 360 ? 12 : width < 400 ? 16 : width < 768 ? 20 : 24;
 
   const { data: rows, error, refresh, refreshSilently, showSkeleton, isRefreshing } = useAsyncResource(fetchHistoryRows);
+  const refreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   useFocusEffect(
     React.useCallback(() => {
       void refreshSilently();
@@ -89,10 +90,14 @@ export default function HistoryScreen() {
     const ch = supabase
       .channel(`appointments-client-${uid}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments', filter: `client_id=eq.${uid}` }, () => {
-        void refreshSilently();
+        if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+        refreshTimerRef.current = setTimeout(() => {
+          void refreshSilently();
+        }, 350);
       })
       .subscribe();
     return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       supabase.removeChannel(ch);
     };
   }, [refreshSilently, session?.user?.id]);

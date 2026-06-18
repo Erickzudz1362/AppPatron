@@ -45,7 +45,7 @@ grant execute on function public.adjust_profile_visit_count(uuid, integer) to se
 insert into public.app_settings(key, value)
 values
   ('show_main_carousel', 'true'),
-  ('show_second_carousel', 'true'),
+  ('show_second_carousel', 'false'),
   ('min_reservation_hours', '3')
 on conflict (key) do update set value = excluded.value;
 

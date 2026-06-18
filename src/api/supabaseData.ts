@@ -1,5 +1,4 @@
 import type { ImageSourcePropType } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../config/supabase';
 import { HOME_GALLERY_FOLDER, PROMO_CAROUSEL_BUCKET } from '../utils/storageUpload';
 import {
@@ -12,15 +11,33 @@ import {
   type NoticeItem,
 } from './fallbackData';
 import { isSupabaseConfigured } from '../utils/supabaseReady';
-import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../utils/imageUrls';
+import { optimizeSupabaseImageUrl } from '../utils/imageUrls';
 
 const warned = new Set<string>();
-const BARBERS_FULL_CACHE_KEY = 'el_patron_barbers_full_v3';
-const HOME_BUNDLE_CACHE_KEY = 'el_patron_home_bundle_v5';
 const BARBERS_FULL_MEMORY_TTL_MS = 15_000;
 let barbersFullMemoryCache: BarberListItem[] | null = null;
 let barbersFullMemoryAt = 0;
-let servedPersistedBarbersCache = false;
+
+function withTimeoutFallback<T>(promise: PromiseLike<T>, fallback: T, ms = 2800): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => resolve(fallback), ms);
+  });
+
+  return Promise.race([Promise.resolve(promise).catch(() => fallback), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
+function emptyPostgrest<T>(data: T): any {
+  return {
+    data,
+    error: null,
+    count: null,
+    status: 200,
+    statusText: 'OK',
+  };
+}
 
 function warnOnce(key: string, message: string) {
   if (warned.has(key)) return;
@@ -65,11 +82,15 @@ function mapServiceRow(r: ServiceRow, index: number): HomeService {
 export async function fetchHomeBarbers(): Promise<HomeBarber[]> {
   if (!isSupabaseConfigured()) return [];
 
-  const { data, error } = await supabase
-    .from('barbers')
-    .select('id, user_id, active, specialties')
-    .eq('active', true)
-    .limit(24);
+  const { data, error } = await withTimeoutFallback(
+    supabase
+      .from('barbers')
+      .select('id, user_id, active, specialties')
+      .eq('active', true)
+      .limit(24),
+    emptyPostgrest([] as BarberRow[]),
+    1400
+  );
   if (error) {
     warnOnce('barbers', error.message);
     return [];
@@ -82,7 +103,11 @@ export async function fetchHomeBarbers(): Promise<HomeBarber[]> {
   const photoByUser: Record<string, string | null> = {};
 
   if (uids.length) {
-    const { data: profs } = await supabase.from('profiles').select('id, name, photo_url').in('id', uids);
+    const { data: profs } = await withTimeoutFallback(
+      supabase.from('profiles').select('id, name, photo_url').in('id', uids),
+      emptyPostgrest([] as Array<{ id: string; name: string | null; photo_url: string | null }>),
+      1400
+    );
     ((profs ?? []) as { id: string; name: string | null; photo_url: string | null }[]).forEach((profile) => {
       nameByUser[profile.id] = profile.name?.trim() || 'Barbero';
       photoByUser[profile.id] = profile.photo_url?.trim()
@@ -97,7 +122,11 @@ export async function fetchHomeBarbers(): Promise<HomeBarber[]> {
 export async function fetchHomeServices(): Promise<HomeService[]> {
   if (!isSupabaseConfigured()) return [];
 
-  const { data, error } = await supabase.from('services').select('id, name, price').eq('active', true).limit(24);
+  const { data, error } = await withTimeoutFallback(
+    supabase.from('services').select('id, name, price').eq('active', true).limit(24),
+    emptyPostgrest([] as ServiceRow[]),
+    1200
+  );
   if (error) {
     warnOnce('services', error.message);
     return [];
@@ -113,30 +142,36 @@ export type HomeBundle = {
   galleryUrls?: string[];
   story?: string;
   testimonial?: string;
-  showSecondCarousel?: boolean;
   showMainCarousel?: boolean;
+  showSecondCarousel?: boolean;
   galleryVisibleCount?: number;
+  whatsappUrl?: string;
+  instagramUrl?: string;
+  facebookUrl?: string;
+  mapsUrl?: string;
 };
-
-function writePersistedHomeBundleCache(items: HomeBundle) {
-  void AsyncStorage.setItem(HOME_BUNDLE_CACHE_KEY, JSON.stringify({ savedAt: Date.now(), items })).catch(
-    () => undefined
-  );
-}
 
 async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
   try {
     const [barbers, services, settingsRes, galleryRes] = await Promise.all([
-      fetchHomeBarbers(),
-      fetchHomeServices(),
-      supabase
-        .from('app_settings')
-        .select('key, value')
-        .in('key', ['home_story', 'home_testimonial', 'show_main_carousel', 'show_second_carousel', 'home_gallery_visible_count']),
-      supabase.storage.from(PROMO_CAROUSEL_BUCKET).list(HOME_GALLERY_FOLDER, {
-        limit: 12,
-        sortBy: { column: 'name', order: 'asc' },
-      }),
+      withTimeoutFallback(fetchHomeBarbers(), [], 1500),
+      withTimeoutFallback(fetchHomeServices(), [], 1300),
+      withTimeoutFallback(
+        supabase
+          .from('app_settings')
+          .select('key, value')
+          .in('key', ['home_story', 'home_testimonial', 'show_second_carousel', 'home_gallery_visible_count', 'whatsapp_contact', 'instagram_url', 'facebook_url', 'maps_url']),
+        emptyPostgrest([] as Array<{ key: string; value: string }>),
+        1200
+      ),
+      withTimeoutFallback(
+        supabase.storage.from(PROMO_CAROUSEL_BUCKET).list(HOME_GALLERY_FOLDER, {
+          limit: 12,
+          sortBy: { column: 'name', order: 'asc' },
+        }),
+        { data: [], error: null },
+        900
+      ),
     ]);
 
     const rows = (settingsRes.data ?? []) as Array<{ key: string; value: string }>;
@@ -152,18 +187,20 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
               return optimizeSupabaseImageUrl(`${url}?v=${version}`, { width: 760, quality: 74, resize: 'cover' });
             })
         : [];
-    prefetchImageUrls([...galleryUrls, ...barbers.map((barber) => barber.avatarUrl)]);
-
     return {
       barbers,
       services,
       galleryUrls,
       story: pick('home_story') || undefined,
       testimonial: pick('home_testimonial') || undefined,
-      showMainCarousel: pick('show_main_carousel') === '' ? true : pick('show_main_carousel') === 'true',
-      showSecondCarousel: pick('show_second_carousel') === '' ? true : pick('show_second_carousel') === 'true',
+      showMainCarousel: true,
+      showSecondCarousel: pick('show_second_carousel') === 'true',
       galleryVisibleCount:
         parsedGalleryVisibleCount >= 2 && parsedGalleryVisibleCount <= 4 ? parsedGalleryVisibleCount : 4,
+      whatsappUrl: pick('whatsapp_contact') || undefined,
+      instagramUrl: pick('instagram_url') || undefined,
+      facebookUrl: pick('facebook_url') || undefined,
+      mapsUrl: pick('maps_url') || undefined,
     };
   } catch (error) {
     warnOnce('bundle', String(error));
@@ -181,12 +218,7 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
 }
 
 export async function fetchHomeBundle(): Promise<HomeBundle> {
-  const network = fetchHomeBundleFromNetwork().then((bundle) => {
-    writePersistedHomeBundleCache(bundle);
-    return bundle;
-  });
-
-  return network;
+  return fetchHomeBundleFromNetwork();
 }
 
 function mapBarberFullRow(
@@ -218,46 +250,6 @@ function mapBarberFullRow(
   };
 }
 
-type CachedBarberListItem = Omit<BarberListItem, 'avatar'> & {
-  avatarUri: string | null;
-};
-
-function serializeBarberList(items: BarberListItem[]): CachedBarberListItem[] {
-  return items.map((item) => ({
-    ...item,
-    avatarUri:
-      typeof item.avatar === 'object' && item.avatar != null && 'uri' in item.avatar
-        ? String(item.avatar.uri)
-        : null,
-  }));
-}
-
-function hydrateBarberList(items: CachedBarberListItem[]): BarberListItem[] {
-  return items.map((item) => ({
-    ...item,
-    avatar: item.avatarUri ? { uri: item.avatarUri } : DEFAULT_BARBER_AVATAR,
-  }));
-}
-
-async function readPersistedBarbersCache(): Promise<BarberListItem[] | null> {
-  try {
-    const raw = await AsyncStorage.getItem(BARBERS_FULL_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { savedAt: number; items: CachedBarberListItem[] };
-    if (!Array.isArray(parsed.items) || !parsed.items.length) return null;
-    return hydrateBarberList(parsed.items);
-  } catch {
-    return null;
-  }
-}
-
-function writePersistedBarbersCache(items: BarberListItem[]) {
-  void AsyncStorage.setItem(
-    BARBERS_FULL_CACHE_KEY,
-    JSON.stringify({ savedAt: Date.now(), items: serializeBarberList(items) })
-  ).catch(() => undefined);
-}
-
 export async function fetchBarbersFull(): Promise<BarberListItem[]> {
   if (!isSupabaseConfigured()) return [];
 
@@ -266,21 +258,15 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
     return barbersFullMemoryCache;
   }
 
-  if (!servedPersistedBarbersCache) {
-    servedPersistedBarbersCache = true;
-    const persisted = await readPersistedBarbersCache();
-    if (persisted?.length) {
-      barbersFullMemoryCache = persisted;
-      barbersFullMemoryAt = now;
-      return persisted;
-    }
-  }
-
-  const { data, error } = await supabase
-    .from('barbers')
-    .select('id, user_id, active, specialties')
-    .eq('active', true)
-    .limit(40);
+  const { data, error } = await withTimeoutFallback(
+    supabase
+      .from('barbers')
+      .select('id, user_id, active, specialties')
+      .eq('active', true)
+      .limit(40),
+    emptyPostgrest([] as Record<string, unknown>[]),
+    1500
+  );
   if (error) {
     warnOnce('barbers_full', error.message);
     return [];
@@ -291,9 +277,19 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
   const uids = Array.from(new Set(rows.map((row) => String(row.user_id ?? '')).filter(Boolean)));
   const barberIds = rows.map((row) => String(row.id));
   const [profilesRes, reviewsRes] = await Promise.all([
-    uids.length ? supabase.from('profiles').select('id, name, photo_url').in('id', uids) : Promise.resolve({ data: [] }),
+    uids.length
+      ? withTimeoutFallback(
+          supabase.from('profiles').select('id, name, photo_url').in('id', uids),
+          emptyPostgrest([] as Array<{ id: string; name: string | null; photo_url: string | null }>),
+          1600
+        )
+      : Promise.resolve({ data: [] }),
     barberIds.length
-      ? supabase.from('barber_reviews').select('barber_id, rating').in('barber_id', barberIds)
+      ? withTimeoutFallback(
+          supabase.from('barber_reviews').select('barber_id, rating').in('barber_id', barberIds),
+          emptyPostgrest([] as Array<{ barber_id: string; rating: number }>),
+          1400
+        )
       : Promise.resolve({ data: [], error: null }),
   ]);
   const profs = profilesRes.data;
@@ -337,7 +333,6 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
   });
   barbersFullMemoryCache = mapped;
   barbersFullMemoryAt = Date.now();
-  writePersistedBarbersCache(mapped);
   return mapped;
 }
 
@@ -365,18 +360,27 @@ function mapAppointmentRow(r: Record<string, unknown>, barberName: string, servi
 export async function fetchHistoryRows(): Promise<HistoryRow[]> {
   if (!isSupabaseConfigured()) return FALLBACK_HISTORY;
 
+  const sessionResult = await withTimeoutFallback(
+    supabase.auth.getSession(),
+    { data: { session: null }, error: null },
+    800
+  );
   const {
     data: { session },
-  } = await supabase.auth.getSession();
+  } = sessionResult;
   const uid = session?.user?.id;
   if (!uid) return [];
 
-  const { data, error } = await supabase
-    .from('appointments')
-    .select('id, barber_id, service_id, date, time, status, notes, total_price_snapshot')
-    .eq('client_id', uid)
-    .order('date', { ascending: false })
-    .limit(50);
+  const { data, error } = await withTimeoutFallback(
+    supabase
+      .from('appointments')
+      .select('id, barber_id, service_id, date, time, status, notes, total_price_snapshot')
+      .eq('client_id', uid)
+      .order('date', { ascending: false })
+      .limit(50),
+    emptyPostgrest([] as Record<string, unknown>[]),
+    1500
+  );
 
   if (error) {
     warnOnce('appointments', error.message);
@@ -390,16 +394,30 @@ export async function fetchHistoryRows(): Promise<HistoryRow[]> {
 
   const [barbersRes, servicesRes] = await Promise.all([
     barberIds.length
-      ? supabase.from('barbers').select('id, user_id').in('id', barberIds)
+      ? withTimeoutFallback(
+          supabase.from('barbers').select('id, user_id').in('id', barberIds),
+          emptyPostgrest([] as Array<{ id: string; user_id: string }>),
+          1500
+        )
       : Promise.resolve({ data: [] as { id: string; user_id: string }[] }),
     serviceIds.length
-      ? supabase.from('services').select('id, name').in('id', serviceIds)
+      ? withTimeoutFallback(
+          supabase.from('services').select('id, name').in('id', serviceIds),
+          emptyPostgrest([] as Array<{ id: string; name: string | null }>),
+          1500
+        )
       : Promise.resolve({ data: [] as { id: string; name: string | null }[] }),
   ]);
 
   const barberRows = (barbersRes as { data: { id: string; user_id: string }[] | null }).data ?? [];
   const userIds = Array.from(new Set(barberRows.map((row) => row.user_id)));
-  const { data: profiles } = userIds.length ? await supabase.from('profiles').select('id, name').in('id', userIds) : { data: [] };
+  const { data: profiles } = userIds.length
+    ? await withTimeoutFallback(
+        supabase.from('profiles').select('id, name').in('id', userIds),
+        emptyPostgrest([] as Array<{ id: string; name: string | null }>),
+        1400
+      )
+    : { data: [] };
 
   const profileNames: Record<string, string> = {};
   ((profiles ?? []) as { id: string; name: string | null }[]).forEach((profile) => {
@@ -442,22 +460,31 @@ function mapNoticeRow(r: Record<string, unknown>, readOverride?: boolean): Notic
 export async function fetchNotices(): Promise<NoticeItem[]> {
   if (!isSupabaseConfigured()) return [];
 
+  const sessionResult = await withTimeoutFallback(
+    supabase.auth.getSession(),
+    { data: { session: null }, error: null },
+    800
+  );
   const {
     data: { session },
-  } = await supabase.auth.getSession();
+  } = sessionResult;
   const uid = session?.user?.id;
   const userCreatedAt = session?.user?.created_at ? new Date(session.user.created_at).getTime() : 0;
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const visibleFrom = new Date(Math.max(thirtyDaysAgo, userCreatedAt || thirtyDaysAgo)).toISOString();
 
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('id, type, title, message, body, date, created_at, read, link, target_user_id')
-    .eq('is_active', true)
-    .or(uid ? `target_user_id.is.null,target_user_id.eq.${uid}` : 'target_user_id.is.null')
-    .gte('created_at', visibleFrom)
-    .order('created_at', { ascending: false })
-    .limit(50);
+  const { data, error } = await withTimeoutFallback(
+    supabase
+      .from('notifications')
+      .select('id, type, title, message, body, date, created_at, read, link, target_user_id')
+      .eq('is_active', true)
+      .or(uid ? `target_user_id.is.null,target_user_id.eq.${uid}` : 'target_user_id.is.null')
+      .gte('created_at', visibleFrom)
+      .order('created_at', { ascending: false })
+      .limit(50),
+    emptyPostgrest([] as Record<string, unknown>[]),
+    1400
+  );
 
   if (error) {
     warnOnce('notifications', error.message);
@@ -477,17 +504,22 @@ export async function fetchNotices(): Promise<NoticeItem[]> {
   }
 
   const ids = scopedRows.map((row) => String(row.id));
-  const { data: reads, error: readsError } = await supabase
-    .from('notification_reads')
-    .select('notification_id')
-    .eq('user_id', uid)
-    .in('notification_id', ids);
+  const { data: reads, error: readsError } = await withTimeoutFallback(
+    supabase
+      .from('notification_reads')
+      .select('notification_id')
+      .eq('user_id', uid)
+      .in('notification_id', ids),
+    emptyPostgrest([] as Array<{ notification_id: string }>),
+    1200
+  );
 
   if (readsError) {
-    warnOnce('notification_reads', readsError.message);
     return scopedRows.map((row) => mapNoticeRow(row, false));
   }
 
-  const readSet = new Set((reads ?? []).map((row) => String((row as { notification_id: string }).notification_id)));
+  const readSet = new Set(
+    ((reads ?? []) as Array<{ notification_id: string }>).map((row) => String(row.notification_id))
+  );
   return scopedRows.map((row) => mapNoticeRow(row, readSet.has(String(row.id))));
 }

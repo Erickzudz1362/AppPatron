@@ -9,20 +9,7 @@ export const PROFILE_AVATAR_COUNT = 12;
  * Fallback local para que la app nunca se quede sin avatar aunque Storage
  * todavia no tenga todos los archivos cargados.
  */
-const BUILTIN_AVATARS: ImageSourcePropType[] = [
-  require('../../assets/avatars/avatar-01.png'),
-  require('../../assets/avatars/avatar-02.png'),
-  require('../../assets/avatars/avatar-03.png'),
-  require('../../assets/avatars/avatar-04.png'),
-  require('../../assets/avatars/avatar-05.png'),
-  require('../../assets/avatars/avatar-06.png'),
-  require('../../assets/avatars/avatar-07.png'),
-  require('../../assets/avatars/avatar-08.png'),
-  require('../../assets/avatars/avatar-09.png'),
-  require('../../assets/avatars/avatar-10.png'),
-  require('../../assets/avatars/avatar-11.png'),
-  require('../../assets/avatars/avatar-12.png'),
-];
+const DEFAULT_AVATAR: ImageSourcePropType = require('../../assets/EL PATRON LOGO OFFICIAL.png');
 
 /** Prefijo en `profiles.photo_url`: `builtin:0` … `builtin:11`. */
 export function getAvatarIndexFromPhotoUrl(photoUrl: string | null | undefined): number {
@@ -41,8 +28,7 @@ export function photoUrlFromAvatarIndex(index: number): string {
 }
 
 export function getAvatarFallbackImageSource(index: number): ImageSourcePropType {
-  const i = Math.min(PROFILE_AVATAR_COUNT - 1, Math.max(0, index));
-  return BUILTIN_AVATARS[i];
+  return DEFAULT_AVATAR;
 }
 
 export function getAvatarStoragePath(index: number): string {

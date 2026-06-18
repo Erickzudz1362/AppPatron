@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { HELP_CONTENT, PRIVACY_POLICY, TERMS_AND_CONDITIONS } from '../../constants/legalContent';
 import { useAppTheme } from '../../theme/ThemeProvider';
 

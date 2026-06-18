@@ -10,6 +10,21 @@ const HOME_CAROUSEL_BUCKET =
   'home-carousel';
 
 const HOME_CAROUSEL_SLOTS = ['slide-1', 'slide-2', 'slide-3'];
+const MAIN_CAROUSEL_TTL_MS = 5 * 60 * 1000;
+
+let cachedMainCarouselUrls: string[] = [];
+let cachedMainCarouselAt = 0;
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timeoutId = setTimeout(() => resolve(null), ms);
+  });
+
+  return Promise.race([promise.catch(() => null), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
 
 export default function PromoCarousel() {
   const { colors } = useAppTheme();
@@ -24,19 +39,29 @@ export default function PromoCarousel() {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data: files, error } = await supabase.storage.from(HOME_CAROUSEL_BUCKET).list('carousel', {
-        limit: 20,
-        sortBy: { column: 'name', order: 'asc' },
-      });
+      const now = Date.now();
+      if (cachedMainCarouselUrls.length && now - cachedMainCarouselAt < MAIN_CAROUSEL_TTL_MS) {
+        setBanners(cachedMainCarouselUrls.map((uri) => ({ uri })));
+        setLoading(false);
+        return;
+      }
 
-      if (error || !mounted) {
+      const result = await withTimeout(
+        supabase.storage.from(HOME_CAROUSEL_BUCKET).list('carousel', {
+          limit: 20,
+          sortBy: { column: 'name', order: 'asc' },
+        }),
+        1700
+      );
+
+      if (!result || result.error || !mounted) {
         if (mounted) setLoading(false);
         return;
       }
 
       const remoteUrls: string[] = [];
       const resolved = HOME_CAROUSEL_SLOTS.map((slot) => {
-        const file = (files ?? []).find((item) => item.name.toLowerCase().startsWith(`${slot}.`));
+        const file = (result.data ?? []).find((item) => item.name.toLowerCase().startsWith(`${slot}.`));
         if (!file) return null;
         const { data } = supabase.storage.from(HOME_CAROUSEL_BUCKET).getPublicUrl(`carousel/${file.name}`);
         const version = encodeURIComponent(String(file.updated_at ?? file.created_at ?? file.name));
@@ -50,6 +75,8 @@ export default function PromoCarousel() {
       }).filter(Boolean) as ImageSourcePropType[];
 
       prefetchImageUrls(remoteUrls);
+      cachedMainCarouselUrls = remoteUrls;
+      cachedMainCarouselAt = Date.now();
       setFailed([false, false, false]);
       setBanners(resolved);
       setLoading(false);
@@ -61,6 +88,7 @@ export default function PromoCarousel() {
   }, []);
 
   useEffect(() => {
+    if (banners.length < 2) return undefined;
     const id = setInterval(() => {
       const next = (index + 1) % banners.length;
       setIndex(next);

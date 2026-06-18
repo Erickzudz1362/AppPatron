@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { supabase } from '../../config/supabase';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import AppDialog from '../../components/AppDialog';
@@ -59,7 +59,6 @@ export default function StaffMediaScreen({ navigation }: any) {
   const [saving, setSaving] = useState(false);
   const [story, setStory] = useState('');
   const [testimonial, setTestimonial] = useState('');
-  const [showMainCarousel, setShowMainCarousel] = useState(true);
   const [showSecondCarousel, setShowSecondCarousel] = useState(true);
   const [galleryVisibleCount, setGalleryVisibleCount] = useState(4);
   const [mainSlides, setMainSlides] = useState<SlidePreviewItem[]>([]);
@@ -78,7 +77,7 @@ export default function StaffMediaScreen({ navigation }: any) {
     const settingsPromise = supabase
       .from('app_settings')
       .select('key, value')
-      .in('key', ['home_story', 'home_testimonial', 'show_main_carousel', 'show_second_carousel', 'home_gallery_visible_count']);
+      .in('key', ['home_story', 'home_testimonial', 'show_second_carousel', 'home_gallery_visible_count']);
 
     const [settingsRes, promoUrls, galleryUrls, carouselRes] = await Promise.all([
       settingsPromise,
@@ -94,8 +93,7 @@ export default function StaffMediaScreen({ navigation }: any) {
       const pick = (key: string) => rows.find((row) => row.key === key)?.value ?? '';
       setStory(pick('home_story'));
       setTestimonial(pick('home_testimonial'));
-      setShowMainCarousel(pick('show_main_carousel') === '' ? true : pick('show_main_carousel') === 'true');
-      setShowSecondCarousel(pick('show_second_carousel') === '' ? true : pick('show_second_carousel') === 'true');
+      setShowSecondCarousel(pick('show_second_carousel') === 'true');
       const parsedVisibleCount = Number.parseInt(pick('home_gallery_visible_count') || '4', 10);
       setGalleryVisibleCount(parsedVisibleCount >= 2 && parsedVisibleCount <= 4 ? parsedVisibleCount : 4);
     }
@@ -132,24 +130,6 @@ export default function StaffMediaScreen({ navigation }: any) {
       };
     });
     setMainSlides(slidePreviews);
-  };
-
-  const persistMainCarousel = async (value: boolean) => {
-    setShowMainCarousel(value);
-    const { error } = await supabase
-      .from('app_settings')
-      .upsert({ key: 'show_main_carousel', value: String(value) }, { onConflict: 'key' });
-
-    if (error) {
-      setShowMainCarousel(!value);
-      setDialog({ title: 'No se pudo guardar', message: error.message });
-      return;
-    }
-
-    setDialog({
-      title: 'Guardado',
-      message: value ? 'El carrusel principal se mostrara en el inicio.' : 'El carrusel principal fue ocultado del inicio.',
-    });
   };
 
   useEffect(() => {
@@ -397,17 +377,6 @@ export default function StaffMediaScreen({ navigation }: any) {
         <View style={styles.card}>
           <Text style={styles.h}>Carrusel principal</Text>
           <Text style={styles.t}>Estas tres imagenes aparecen en la parte superior del inicio.</Text>
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.t}>Mostrar carrusel principal</Text>
-              <Text style={styles.small}>Si lo desactivas, desaparece por completo del inicio.</Text>
-            </View>
-            <Switch
-              value={showMainCarousel}
-              onValueChange={(value) => void persistMainCarousel(value)}
-              trackColor={{ false: colors.border, true: colors.primary }}
-            />
-          </View>
           {mainSlides.map((slide, index) => (
             <View key={slide.path} style={styles.mediaRow}>
               {slide.url ? (

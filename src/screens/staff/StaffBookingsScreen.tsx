@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FlatList, Image, Linking, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
-import { Feather } from '@expo/vector-icons';
+import Feather from '@expo/vector-icons/Feather';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../config/supabase';
 import { useAppTheme } from '../../theme/ThemeProvider';
@@ -46,6 +46,29 @@ const STATUS_TONE: Record<string, { bg: string; border: string; text: string; do
   cancelled: { bg: 'rgba(148, 163, 184, 0.18)', border: 'rgba(148, 163, 184, 0.34)', text: '#94A3B8', dot: '#94A3B8' },
 };
 
+let staffBookingDetailsRpcAvailable: boolean | null = null;
+
+function withTimeoutFallback<T>(promise: PromiseLike<T>, fallback: T, ms = 1800): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timeoutId = setTimeout(() => resolve(fallback), ms);
+  });
+
+  return Promise.race([Promise.resolve(promise).catch(() => fallback), timeout]).finally(() => {
+    if (timeoutId) clearTimeout(timeoutId);
+  });
+}
+
+function emptyPostgrest<T>(data: T): any {
+  return {
+    data,
+    error: null,
+    count: null,
+    status: 200,
+    statusText: 'OK',
+  };
+}
+
 function digitsPhone(raw: string | null | undefined): string {
   return raw ? raw.replace(/\D/g, '') : '';
 }
@@ -70,10 +93,6 @@ function upcomingDates(): Array<{ key: string; label: string }> {
   });
 }
 
-async function adjustVisitCount(clientId: string, delta: number) {
-  const { error } = await supabase.rpc('adjust_profile_visit_count', { p_user_id: clientId, p_delta: delta });
-  if (error) throw error;
-}
 
 export default function StaffBookingsScreen({ navigation }: any) {
   const route = useRoute();
@@ -93,6 +112,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
   const [selectedDate, setSelectedDate] = useState<string>(todayIso());
   const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dateOptions = useMemo(() => upcomingDates(), []);
   const today = useMemo(() => todayIso(), []);
@@ -103,39 +123,57 @@ export default function StaffBookingsScreen({ navigation }: any) {
     if (showLoader) setLoading(true);
 
     try {
-      const rpcParams = {
-        p_date: selectedDate === 'all' ? null : selectedDate,
-        p_status: statusFilter === 'all' ? null : statusFilter,
-        p_barber_id: isAdmin && selectedBarberId !== 'all' ? selectedBarberId : null,
-      };
-      const rpcRes = await supabase.rpc('get_staff_booking_details', rpcParams);
-      if (!rpcRes.error && Array.isArray(rpcRes.data)) {
-        const list = (rpcRes.data as Row[]) ?? [];
-        setRows(list);
+      if (staffBookingDetailsRpcAvailable !== false) {
+        const rpcParams = {
+          p_date: selectedDate === 'all' ? null : selectedDate,
+          p_status: statusFilter === 'all' ? null : statusFilter,
+          p_barber_id: isAdmin && selectedBarberId !== 'all' ? selectedBarberId : null,
+        };
+        const rpcRes = await withTimeoutFallback(
+          supabase.rpc('get_staff_booking_details', rpcParams),
+          {
+            data: null,
+            error: { message: 'timeout' },
+          } as any,
+          1400
+        );
+        if (!rpcRes.error && Array.isArray(rpcRes.data)) {
+          staffBookingDetailsRpcAvailable = true;
+          const list = (rpcRes.data as Row[]) ?? [];
+          setRows(list);
 
-        const nextClientMap: Record<string, ProfileMini> = {};
-        const nextBarberMap: Record<string, string> = {};
-        list.forEach((row) => {
-          nextClientMap[row.client_id] = {
-            id: row.client_id,
-            name: row.client_name ?? null,
-            phone: row.client_phone ?? null,
-            visit_count: row.client_visit_count ?? null,
-          };
-          nextBarberMap[row.barber_id] = row.barber_name?.trim() || 'Barbero';
-        });
-        setClientMap(nextClientMap);
-        setBarberNameMap(nextBarberMap);
+          const nextClientMap: Record<string, ProfileMini> = {};
+          const nextBarberMap: Record<string, string> = {};
+          list.forEach((row) => {
+            nextClientMap[row.client_id] = {
+              id: row.client_id,
+              name: row.client_name ?? null,
+              phone: row.client_phone ?? null,
+              visit_count: row.client_visit_count ?? null,
+            };
+            nextBarberMap[row.barber_id] = row.barber_name?.trim() || 'Barbero';
+          });
+          setClientMap(nextClientMap);
+          setBarberNameMap(nextBarberMap);
 
-        if (isAdmin) {
-          const { data: allBarbers } = await supabase.rpc('get_admin_barber_directory');
-          const options = ((allBarbers ?? []) as Array<{ id: string; name: string | null }>).map((barber) => ({
-            id: barber.id,
-            name: barber.name?.trim() || nextBarberMap[barber.id] || 'Barbero',
-          }));
-          setBarberOptions(options);
+          if (isAdmin) {
+            const { data: allBarbers } = await withTimeoutFallback(
+              supabase.rpc('get_admin_barber_directory'),
+              emptyPostgrest([] as Array<{ id: string; name: string | null }>),
+              1200
+            );
+            const options = ((allBarbers ?? []) as Array<{ id: string; name: string | null }>).map((barber) => ({
+              id: barber.id,
+              name: barber.name?.trim() || nextBarberMap[barber.id] || 'Barbero',
+            }));
+            setBarberOptions(options);
+          }
+          return;
         }
-        return;
+
+        if (rpcRes.error && /get_staff_booking_details|not found|404|schema cache/i.test(rpcRes.error.message)) {
+          staffBookingDetailsRpcAvailable = false;
+        }
       }
 
       let query = supabase
@@ -158,7 +196,11 @@ export default function StaffBookingsScreen({ navigation }: any) {
         query = query.eq('barber_id', selectedBarberId);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await withTimeoutFallback(
+        query,
+        emptyPostgrest([] as Row[]),
+        1600
+      );
       if (error) {
         setDialog({ title: 'Error', message: error.message });
         return;
@@ -170,8 +212,20 @@ export default function StaffBookingsScreen({ navigation }: any) {
       const clientIds = Array.from(new Set(list.map((row) => row.client_id).filter(Boolean)));
       const barberIds = Array.from(new Set(list.map((row) => row.barber_id).filter(Boolean)));
       const [profilesRes, barbersRes] = await Promise.all([
-        clientIds.length ? supabase.from('profiles').select('id, name, phone, visit_count').in('id', clientIds) : Promise.resolve({ data: [] }),
-        isAdmin ? supabase.from('barbers').select('id, user_id') : Promise.resolve({ data: [] }),
+        clientIds.length
+          ? withTimeoutFallback(
+              supabase.from('profiles').select('id, name, phone, visit_count').in('id', clientIds),
+              emptyPostgrest([] as ProfileMini[]),
+              1200
+            )
+          : Promise.resolve({ data: [] }),
+        isAdmin
+          ? withTimeoutFallback(
+              supabase.from('barbers').select('id, user_id'),
+              emptyPostgrest([] as BarberMini[]),
+              1200
+            )
+          : Promise.resolve({ data: [] }),
       ]);
 
       const nextClientMap: Record<string, ProfileMini> = {};
@@ -182,7 +236,13 @@ export default function StaffBookingsScreen({ navigation }: any) {
 
       const allBarbers = ((barbersRes.data as BarberMini[]) ?? []);
       const allUserIds = Array.from(new Set(allBarbers.map((barber) => barber.user_id)));
-      const { data: barberProfiles } = allUserIds.length ? await supabase.from('profiles').select('id, name').in('id', allUserIds) : { data: [] };
+      const { data: barberProfiles } = allUserIds.length
+        ? await withTimeoutFallback(
+            supabase.from('profiles').select('id, name').in('id', allUserIds),
+            emptyPostgrest([] as Array<{ id: string; name: string | null }>),
+            1200
+          )
+        : { data: [] };
       const nameByUser: Record<string, string> = {};
       ((barberProfiles ?? []) as { id: string; name: string | null }[]).forEach((entry) => {
         nameByUser[entry.id] = entry.name?.trim() || 'Barbero';
@@ -219,7 +279,10 @@ export default function StaffBookingsScreen({ navigation }: any) {
 
   useEffect(() => {
     const refreshSoon = () => {
-      void load(false);
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
+      refreshTimerRef.current = setTimeout(() => {
+        void load(false);
+      }, 300);
     };
 
     const bookingsChannel = supabase
@@ -229,9 +292,10 @@ export default function StaffBookingsScreen({ navigation }: any) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'barbers' }, refreshSoon)
       .subscribe();
 
-    const intervalId = setInterval(refreshSoon, 5000);
+    const intervalId = setInterval(refreshSoon, 60_000);
 
     return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
       clearInterval(intervalId);
       void supabase.removeChannel(bookingsChannel);
     };
@@ -249,17 +313,15 @@ export default function StaffBookingsScreen({ navigation }: any) {
   };
 
   const updateStatus = async (row: Row, next: 'confirmed' | 'completed' | 'no_show' | 'cancelled') => {
-    const previous = row.status;
-    const { error } = await supabase.from('appointments').update({ status: next }).eq('id', row.id);
+    // RPC atómica: cambia estado + ajusta visit_count en una transacción SQL.
+    const { error } = await supabase.rpc('update_appointment_status', {
+      p_appointment_id: row.id,
+      p_new_status: next,
+    });
     if (error) {
       setDialog({ title: 'No se pudo actualizar', message: error.message });
       return;
     }
-
-    if (previous === 'completed' && next !== 'completed') await adjustVisitCount(row.client_id, -1);
-    if (previous === 'no_show' && next !== 'no_show') await adjustVisitCount(row.client_id, 1);
-    if (next === 'completed' && previous !== 'completed') await adjustVisitCount(row.client_id, 1);
-    if (next === 'no_show' && previous !== 'no_show') await adjustVisitCount(row.client_id, -1);
 
     const message =
       next === 'completed'

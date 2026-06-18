@@ -11,11 +11,12 @@ import { Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
-import { supabase } from '../config/supabase';
+import { supabase, supabaseAuthStorageKey } from '../config/supabase';
 import { getAuthEmailRedirectUrl, parseSupabaseAuthRedirect } from '../config/authRedirect';
 import { registerPushToken, showLocalNoticeNotification } from '../notifications/push';
 import type { Profile, UserRole } from '../types/profile';
 import { parseRole } from '../types/profile';
+import { clearAsyncResourceCache } from '../hooks/useAsyncResource';
 
 type ProfileResolution = 'idle' | 'loading' | 'done';
 
@@ -39,8 +40,9 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
-const SPLASH_MIN_MS = 450;
+const SPLASH_MIN_MS = 320;
 const PROFILE_CACHE_PREFIX = 'el_patron_profile_';
+const ADMIN_VIEW_ROLE_KEY = 'el_patron_admin_view_role';
 
 function isInvalidRefreshSessionError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
@@ -48,7 +50,54 @@ function isInvalidRefreshSessionError(err: unknown): boolean {
 }
 
 async function clearLocalAuthSession(): Promise<void> {
-  await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+  try {
+    if (typeof globalThis.localStorage !== 'undefined') {
+      const removeKeys: string[] = [];
+      for (let index = 0; index < globalThis.localStorage.length; index += 1) {
+        const key = globalThis.localStorage.key(index);
+        if (!key) continue;
+        if (key === supabaseAuthStorageKey || key.startsWith('sb-') || key.startsWith('el_patron_')) {
+          removeKeys.push(key);
+        }
+      }
+      removeKeys.forEach((key) => globalThis.localStorage.removeItem(key));
+    }
+    if (typeof globalThis.sessionStorage !== 'undefined') {
+      const removeKeys: string[] = [];
+      for (let index = 0; index < globalThis.sessionStorage.length; index += 1) {
+        const key = globalThis.sessionStorage.key(index);
+        if (!key) continue;
+        if (key === supabaseAuthStorageKey || key.startsWith('sb-') || key.startsWith('el_patron_')) {
+          removeKeys.push(key);
+        }
+      }
+      removeKeys.forEach((key) => globalThis.sessionStorage.removeItem(key));
+    }
+  } catch {
+    // En algunos WebViews el storage del navegador puede estar bloqueado.
+  }
+
+  await Promise.allSettled([
+    supabase.auth.signOut({ scope: 'local' }),
+    AsyncStorage.removeItem(supabaseAuthStorageKey),
+    AsyncStorage.removeItem(`${supabaseAuthStorageKey}-code-verifier`),
+    AsyncStorage.removeItem(ADMIN_VIEW_ROLE_KEY),
+  ]);
+
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const appKeys = keys.filter(
+      (key) =>
+        key.startsWith(PROFILE_CACHE_PREFIX) ||
+        key.startsWith('el_patron_') ||
+        key.startsWith('sb-')
+    );
+    if (appKeys.length) {
+      await AsyncStorage.multiRemove(appKeys);
+    }
+  } catch {
+    // Si el navegador bloquea alguna limpieza local, igualmente dejamos el estado React sin sesion.
+  }
 }
 
 function delay(ms: number): Promise<void> {
@@ -114,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [initializing, setInitializing] = useState(true);
   const [profileResolution, setProfileResolution] = useState<ProfileResolution>('idle');
   const [passwordRecovery, setPasswordRecovery] = useState(false);
-  const [adminViewRole, setAdminViewRole] = useState<UserRole | null>(null);
+  const [adminViewRole, setAdminViewRoleState] = useState<UserRole | null>(null);
   const handlingPasswordSignInRef = useRef(false);
   const handlingAuthRedirectRef = useRef(false);
   const hydratingUserIdRef = useRef<string | null>(null);
@@ -198,7 +247,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(null);
         setProfileResolution('idle');
         setPasswordRecovery(false);
-        setAdminViewRole(null);
+        setAdminViewRoleState(null);
         return;
       }
 
@@ -211,6 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       hydratingUserIdRef.current = nextSession.user.id;
       setProfileResolution('loading');
+      // Solo muestra perfil temporal si ya esperamos 3s sin datos — evita flashing en redes normales.
       const fallbackTimer = setTimeout(() => {
         if (
           hydratingUserIdRef.current === nextSession.user.id &&
@@ -219,17 +269,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(buildTemporaryProfileFromSession(nextSession));
           setProfileResolution('done');
         }
-      }, 1500);
+      }, 1400);
       try {
         let ok =
           (await Promise.race([
             loadProfileWithRetry(nextSession.user.id),
-            timeout(1800).then(() => false),
+            timeout(2600).then(() => false),
           ])) === true;
         if (!ok) {
           const refreshResult = await Promise.race([
             supabase.auth.refreshSession(),
-            timeout(1200).then(() => null),
+            timeout(900).then(() => null),
           ]);
           const refreshed = refreshResult && 'data' in refreshResult ? refreshResult.data : null;
           const refreshErr = refreshResult && 'error' in refreshResult ? refreshResult.error : null;
@@ -238,7 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             ok =
               (await Promise.race([
                 loadProfileWithRetry(nextSession.user.id),
-                timeout(1600).then(() => false),
+                timeout(1800).then(() => false),
               ])) === true;
           }
         }
@@ -283,7 +333,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const sessionResult = await Promise.race([
           supabase.auth.getSession(),
-          timeout(1800).then(() => null),
+          timeout(1200).then(() => null),
         ]);
         const currentSession = sessionResult?.data.session ?? null;
         if (!mounted) return;
@@ -298,7 +348,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           const userResult = await Promise.race([
             supabase.auth.getUser(),
-            timeout(1200).then(() => null),
+            timeout(800).then(() => null),
           ]);
           const userErr = userResult?.error ?? null;
           if (userErr && isInvalidRefreshSessionError(userErr)) {
@@ -308,9 +358,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile(null);
             setProfileResolution('idle');
             setPasswordRecovery(false);
-            setAdminViewRole(null);
+            setAdminViewRoleState(null);
           } else {
             if (cachedProfile) {
+              // Restaurar adminViewRole persistido si el rol real es admin.
+              if (parseRole(cachedProfile.role) === 'admin') {
+                void AsyncStorage.getItem(ADMIN_VIEW_ROLE_KEY).then((saved) => {
+                  if (saved) setAdminViewRoleState(parseRole(saved));
+                });
+              }
               setInitializing(false);
               void hydrateAuthenticatedUser(currentSession);
               return;
@@ -322,7 +378,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(null);
           setProfileResolution('idle');
           setPasswordRecovery(false);
-          setAdminViewRole(null);
+          setAdminViewRoleState(null);
         }
       } catch (error) {
         if (isInvalidRefreshSessionError(error)) {
@@ -332,7 +388,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile(null);
             setProfileResolution('idle');
             setPasswordRecovery(false);
-            setAdminViewRole(null);
+            setAdminViewRoleState(null);
           }
         } else {
           console.warn('[Auth] init:', error);
@@ -451,7 +507,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfile(null);
         setProfileResolution('idle');
         setPasswordRecovery(false);
-        setAdminViewRole(null);
+        setAdminViewRoleState(null);
       }
     });
 
@@ -539,7 +595,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         const hydrated = await Promise.race([
           hydrateAuthenticatedUser(currentSession).then(() => 'done' as const),
-          timeout(2400),
+          timeout(1600),
         ]);
 
         if (hydrated === 'timeout' && profileRef.current?.id !== currentSession.user.id) {
@@ -570,12 +626,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    clearAsyncResourceCache();
     setSession(null);
     setProfile(null);
     setProfileResolution('idle');
     setPasswordRecovery(false);
     setAdminViewRole(null);
-    void clearLocalAuthSession();
+    await Promise.race([clearLocalAuthSession(), timeout(900)]);
   }, []);
 
   const finishPasswordRecovery = useCallback(
@@ -595,6 +652,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const cancelPasswordRecovery = useCallback(() => {
     setPasswordRecovery(false);
+  }, []);
+
+  const setAdminViewRole = useCallback((nextRole: UserRole | null) => {
+    setAdminViewRoleState(nextRole);
+    if (nextRole) {
+      void AsyncStorage.setItem(ADMIN_VIEW_ROLE_KEY, nextRole);
+    } else {
+      void AsyncStorage.removeItem(ADMIN_VIEW_ROLE_KEY);
+    }
   }, []);
 
   const actualRole = profile ? parseRole(profile.role) : null;
