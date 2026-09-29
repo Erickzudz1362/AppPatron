@@ -1,6 +1,6 @@
 import type { ImageSourcePropType } from 'react-native';
 
-const localBarberImg = require('../../assets/app-patron-icon.png');
+const localBarberImg = require('../../assets/avatars/avatar-01.png');
 
 export type HomeBarber = {
   id: string;
@@ -88,6 +88,11 @@ export type HistoryRow = {
   status?: string;
   notes?: string;
   price: string;
+  serviceIds?: string[];
+  durationMinutes?: number;
+  modifyMinHours?: number;
+  canModify?: boolean;
+  modifyDeadline?: string;
 };
 
 export const FALLBACK_HISTORY: HistoryRow[] = [

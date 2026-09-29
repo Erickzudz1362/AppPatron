@@ -1,8 +1,9 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Platform, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { LIGHT_COLORS } from '../theme/palette';
 
 export default function SplashScreen() {
+  const useNativeDriver = Platform.OS !== 'web';
   const opacity = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.96)).current;
   const translateY = useRef(new Animated.Value(8)).current;
@@ -18,25 +19,25 @@ export default function SplashScreen() {
         toValue: 1,
         duration: 260,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver,
       }),
       Animated.timing(scale, {
         toValue: 1,
         duration: 260,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver,
       }),
       Animated.timing(translateY, {
         toValue: 0,
         duration: 260,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
+        useNativeDriver,
       }),
       Animated.timing(textOpacity, {
         toValue: 1,
         duration: 180,
         delay: 120,
-        useNativeDriver: true,
+        useNativeDriver,
       }),
     ]).start();
 
@@ -48,13 +49,13 @@ export default function SplashScreen() {
             toValue: 1,
             duration: 280,
             easing: Easing.out(Easing.quad),
-            useNativeDriver: true,
+            useNativeDriver,
           }),
           Animated.timing(dot, {
             toValue: 0.35,
             duration: 280,
             easing: Easing.in(Easing.quad),
-            useNativeDriver: true,
+            useNativeDriver,
           }),
           Animated.delay(420),
         ])
@@ -66,7 +67,7 @@ export default function SplashScreen() {
     return () => {
       dotsLoopRef.current?.stop();
     };
-  }, [dot1, dot2, dot3, opacity, scale, textOpacity, translateY]);
+  }, [dot1, dot2, dot3, opacity, scale, textOpacity, translateY, useNativeDriver]);
 
   return (
     <View style={styles.container}>

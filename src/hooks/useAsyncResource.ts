@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 let resourceCache = new WeakMap<() => Promise<unknown>, unknown>();
 let resourceInFlight = new WeakMap<() => Promise<unknown>, Promise<unknown>>();
-let resourceLoadedAt = new WeakMap<() => Promise<unknown>, number>();
 
 type Options = {
   enabled?: boolean;
@@ -63,7 +62,6 @@ export function useAsyncResource<T>(factory: () => Promise<T>, options?: Options
 
         const result = await pending;
         resourceCache.set(factoryKey, result);
-        resourceLoadedAt.set(factoryKey, Date.now());
         if (mountedRef.current) setData(result);
       } catch (e: unknown) {
         if (mountedRef.current) setError(e instanceof Error ? e.message : 'Error desconocido');
@@ -100,5 +98,4 @@ export function useAsyncResource<T>(factory: () => Promise<T>, options?: Options
 export function clearAsyncResourceCache() {
   resourceCache = new WeakMap<() => Promise<unknown>, unknown>();
   resourceInFlight = new WeakMap<() => Promise<unknown>, Promise<unknown>>();
-  resourceLoadedAt = new WeakMap<() => Promise<unknown>, number>();
 }

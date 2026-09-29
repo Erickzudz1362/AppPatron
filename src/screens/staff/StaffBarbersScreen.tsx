@@ -131,7 +131,7 @@ export default function StaffBarbersScreen({ navigation }: any) {
 
   const load = useCallback(async () => {
     const [{ data: barbersData, error: barbersError }, { data: servicesData, error: servicesError }] = await Promise.all([
-      supabase.from('barbers').select('id, user_id, specialties, active, base_schedule').order('created_at', { ascending: false }),
+      supabase.rpc('get_admin_barber_management'),
       supabase.from('services').select('id, name, active').eq('active', true).order('name', { ascending: true }),
     ]);
 
@@ -144,27 +144,7 @@ export default function StaffBarbersScreen({ navigation }: any) {
       return;
     }
 
-    const barberRows = (barbersData as BarberRow[]) ?? [];
-    const userIds = barberRows.map((row) => row.user_id).filter(Boolean);
-    const { data: profilesData } = userIds.length
-      ? await supabase.from('profiles').select('id, name, photo_url').in('id', userIds)
-      : { data: [] };
-
-    const profileMap: Record<string, { name: string | null; photo_url: string | null }> = {};
-    ((profilesData ?? []) as { id: string; name: string | null; photo_url: string | null }[]).forEach((profile) => {
-      profileMap[profile.id] = {
-        name: profile.name,
-        photo_url: profile.photo_url,
-      };
-    });
-
-    setRows(
-      barberRows.map((row) => ({
-        ...row,
-        profile_name: profileMap[row.user_id]?.name ?? null,
-        profile_photo_url: profileMap[row.user_id]?.photo_url ?? null,
-      }))
-    );
+    setRows((barbersData as BarberRow[]) ?? []);
     setServices((servicesData as ServiceRow[]) ?? []);
   }, []);
 
@@ -382,13 +362,13 @@ export default function StaffBarbersScreen({ navigation }: any) {
   };
 
   const removeBarber = async (row: BarberRow) => {
-    const { error } = await supabase.from('barbers').delete().eq('id', row.id);
+    const { error } = await supabase.rpc('deactivate_barber', { p_barber_id: row.id });
     if (error) {
       setDialog({ title: 'No se pudo eliminar', message: error.message });
       return;
     }
     if (editingBarberId === row.id) resetForm();
-    setDialog({ title: 'Barbero eliminado', message: 'El barbero fue eliminado de la app.' });
+    setDialog({ title: 'Barbero desactivado', message: 'Se conservó su historial y su acceso de barbero fue retirado.' });
     void load();
   };
 

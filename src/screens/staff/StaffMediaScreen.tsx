@@ -203,7 +203,7 @@ export default function StaffMediaScreen({ navigation }: any) {
     setDialog({ title: 'Guardado', message: 'Los textos del inicio fueron actualizados.' });
   };
 
-  const uploadToPath = async (targetPath: string, successMessage: string) => {
+  const uploadToPath = async (targetPath: string, successMessage: string, maxWidth = 960) => {
     try {
       const asset = await pickImageFromGallery();
       if (!asset?.uri) return;
@@ -214,7 +214,7 @@ export default function StaffMediaScreen({ navigation }: any) {
         bucket: PROMO_CAROUSEL_BUCKET,
         path: targetPath,
         contentType: asset.mimeType ?? 'image/jpeg',
-        maxWidth: 1600,
+        maxWidth,
       });
 
       await loadMedia();
@@ -232,12 +232,12 @@ export default function StaffMediaScreen({ navigation }: any) {
 
   const uploadPromoImage = async () => {
     const path = `${HOME_PROMO_CAROUSEL_FOLDER}/promo-${Date.now()}.webp`;
-    await uploadToPath(path, 'La promoción ya está lista para mostrarse en el inicio.');
+    await uploadToPath(path, 'La promoción ya está lista para mostrarse en el inicio.', 1080);
   };
 
   const uploadGalleryImage = async () => {
     const path = `${HOME_GALLERY_FOLDER}/gallery-${Date.now()}.webp`;
-    await uploadToPath(path, 'La imagen ya fue agregada a la galería del inicio.');
+    await uploadToPath(path, 'La imagen ya fue agregada a la galería del inicio.', 900);
   };
 
   const replaceAppAvatar = async (index: number) => {
@@ -300,7 +300,7 @@ export default function StaffMediaScreen({ navigation }: any) {
         bucket: PROMO_CAROUSEL_BUCKET,
         path: targetPath,
         contentType: asset.mimeType ?? 'image/jpeg',
-        maxWidth: 1600,
+        maxWidth: 1200,
       });
 
       await loadMedia();

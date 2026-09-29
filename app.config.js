@@ -8,13 +8,16 @@ module.exports = () => {
     owner: 'erickzu',
     icon: './assets/app-patron-icon.png',
     splash: {
-      backgroundColor: '#ffffff',
+      ...(expo.splash || {}),
+      image: './assets/splash-icon.png',
+      resizeMode: 'contain',
+      backgroundColor: '#06141D',
     },
     android: {
       ...(expo.android || {}),
       adaptiveIcon: {
         foregroundImage: './assets/app-patron-icon.png',
-        backgroundColor: '#ffffff',
+        backgroundColor: '#06141D',
       },
     },
     extra: {

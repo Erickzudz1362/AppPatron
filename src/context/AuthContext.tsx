@@ -7,16 +7,16 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Alert, AppState } from 'react-native';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js';
 import { supabase, supabaseAuthStorageKey } from '../config/supabase';
 import { getAuthEmailRedirectUrl, parseSupabaseAuthRedirect } from '../config/authRedirect';
-import { registerPushToken, showLocalNoticeNotification } from '../notifications/push';
 import type { Profile, UserRole } from '../types/profile';
 import { parseRole } from '../types/profile';
 import { clearAsyncResourceCache } from '../hooks/useAsyncResource';
+import { notificationsEnabled, setNotificationsEnabled } from '../notifications/registration';
 
 type ProfileResolution = 'idle' | 'loading' | 'done';
 
@@ -40,7 +40,7 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
-const SPLASH_MIN_MS = 320;
+const SPLASH_MIN_MS = 80;
 const PROFILE_CACHE_PREFIX = 'el_patron_profile_';
 const ADMIN_VIEW_ROLE_KEY = 'el_patron_admin_view_role';
 
@@ -123,18 +123,6 @@ function buildTemporaryProfileFromSession(nextSession: Session): Profile {
     status: 'active',
     push_tokens: [],
   };
-}
-
-async function syncPushTokenToProfile(userId: string, current: string[] | null | undefined): Promise<void> {
-  const token = await registerPushToken();
-  if (!token) return;
-  const prev = Array.isArray(current) ? current : [];
-  if (prev.includes(token)) return;
-  const next = Array.from(new Set([...prev, token]));
-  const { error } = await supabase.from('profiles').update({ push_tokens: next }).eq('id', userId);
-  if (error) {
-    console.warn('[Auth] push_tokens:', error.message);
-  }
 }
 
 async function readCachedProfile(userId: string): Promise<Profile | null> {
@@ -331,11 +319,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
 
       try {
-        const sessionResult = await Promise.race([
-          supabase.auth.getSession(),
-          timeout(1200).then(() => null),
-        ]);
-        const currentSession = sessionResult?.data.session ?? null;
+        // getSession lee el almacenamiento local. Un timeout corto podia mostrar el
+        // login por error en telefonos lentos aunque la sesion siguiera vigente.
+        const sessionResult = await supabase.auth.getSession();
+        const currentSession = sessionResult.data.session ?? null;
         if (!mounted) return;
 
         if (currentSession?.user) {
@@ -344,11 +331,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setSession(currentSession);
             setProfile(cachedProfile);
             setProfileResolution('done');
+            if (parseRole(cachedProfile.role) === 'admin') {
+              void AsyncStorage.getItem(ADMIN_VIEW_ROLE_KEY).then((saved) => {
+                if (saved) setAdminViewRoleState(parseRole(saved));
+              });
+            }
+            // El caché permite abrir de inmediato; la validación remota ocurre sin bloquear.
+            setInitializing(false);
+            void hydrateAuthenticatedUser(currentSession);
+            return;
           }
 
           const userResult = await Promise.race([
             supabase.auth.getUser(),
-            timeout(800).then(() => null),
+            timeout(1800).then(() => null),
           ]);
           const userErr = userResult?.error ?? null;
           if (userErr && isInvalidRefreshSessionError(userErr)) {
@@ -360,17 +356,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setPasswordRecovery(false);
             setAdminViewRoleState(null);
           } else {
-            if (cachedProfile) {
-              // Restaurar adminViewRole persistido si el rol real es admin.
-              if (parseRole(cachedProfile.role) === 'admin') {
-                void AsyncStorage.getItem(ADMIN_VIEW_ROLE_KEY).then((saved) => {
-                  if (saved) setAdminViewRoleState(parseRole(saved));
-                });
-              }
-              setInitializing(false);
-              void hydrateAuthenticatedUser(currentSession);
-              return;
-            }
             await hydrateAuthenticatedUser(currentSession);
           }
         } else {
@@ -514,54 +499,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, [hydrateAuthenticatedUser]);
 
-  useEffect(() => {
-    const uid = session?.user?.id;
-    if (!uid || !profile) return;
-    void syncPushTokenToProfile(uid, profile.push_tokens);
-  }, [profile, session?.user?.id]);
-
-  useEffect(() => {
-    const uid = session?.user?.id;
-    if (!uid || !profile) return;
-
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void syncPushTokenToProfile(uid, profile.push_tokens);
-      }
-    });
-
-    return () => sub.remove();
-  }, [profile, session?.user?.id]);
-
-  useEffect(() => {
-    const uid = session?.user?.id;
-    const currentRole = profile ? parseRole(profile.role) : null;
-    if (!uid || !currentRole || !['admin', 'barber'].includes(currentRole)) return;
-
-    const channel = supabase
-      .channel(`global-notice-${uid}`)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `target_user_id=eq.${uid}` },
-        (payload) => {
-          const row = payload.new as Record<string, unknown>;
-          const title = typeof row.title === 'string' ? row.title : 'Nuevo aviso';
-          const body =
-            typeof row.message === 'string'
-              ? row.message
-              : typeof row.body === 'string'
-              ? row.body
-              : 'Tienes una nueva notificacion.';
-          void showLocalNoticeNotification(title, body);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [profile, session?.user?.id]);
-
   const signIn = useCallback(
     async (email: string, password: string) => {
       handlingPasswordSignInRef.current = true;
@@ -626,6 +563,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    const uid = sessionRef.current?.user?.id;
+    if (uid && await notificationsEnabled(uid)) {
+      await Promise.race([
+        setNotificationsEnabled({ enabled: false, userId: uid, currentNativeTokens: profileRef.current?.push_tokens }).catch(() => undefined),
+        timeout(1800),
+      ]);
+    }
     clearAsyncResourceCache();
     setSession(null);
     setProfile(null);

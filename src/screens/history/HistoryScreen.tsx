@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -24,6 +25,9 @@ import type { HistoryRow } from '../../api/fallbackData';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../config/supabase';
+import { cancelAppointment } from '../../api/bookingApi';
+import { triggerBookingPush } from '../../notifications/remotePush';
+import { cancelAppointmentReminders } from '../../notifications/push';
 
 function parsePriceBs(price: string): number {
   const n = parseInt(price.replace(/\D/g, ''), 10);
@@ -40,11 +44,12 @@ function formatDateShort(iso: string): string {
 }
 
 const STATUS_ORDER = ['pending', 'confirmed', 'completed'] as const;
-type NormalizedStatus = (typeof STATUS_ORDER)[number] | 'no_show';
+type NormalizedStatus = (typeof STATUS_ORDER)[number] | 'no_show' | 'cancelled';
 
 function normalizeStatus(raw: string | undefined): NormalizedStatus {
   const s = (raw ?? '').toLowerCase();
   if (s === 'no_show') return 'no_show';
+  if (s === 'cancelled') return 'cancelled';
   if (s === 'reserved' || s === 'booked') return 'pending';
   if (s === 'on_process' || s === 'in_process') return 'confirmed';
   if (s === 'finished') return 'completed';
@@ -59,6 +64,8 @@ function statusLabel(status: string): string {
     case 'pending': return 'Reservado';
     case 'confirmed': return 'Confirmado';
     case 'completed': return 'Finalizado';
+    case 'cancelled': return 'Cancelado';
+    case 'no_show': return 'No se presentó';
     default: return 'Reservado';
   }
 }
@@ -69,7 +76,7 @@ function resolveReviewBarberName(value: string | undefined): string {
   return normalized;
 }
 
-export default function HistoryScreen() {
+export default function HistoryScreen({ navigation }: any) {
   const { width } = useWindowDimensions();
   const { colors } = useAppTheme();
   const { session, profile } = useAuth();
@@ -110,6 +117,9 @@ export default function HistoryScreen() {
   const [reviewComment, setReviewComment] = React.useState('');
   const [reviewSaving, setReviewSaving] = React.useState(false);
   const [reviewError, setReviewError] = React.useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = React.useState<HistoryRow | null>(null);
+  const [cancelling, setCancelling] = React.useState(false);
+  const [actionError, setActionError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const uid = session?.user?.id;
@@ -127,7 +137,10 @@ export default function HistoryScreen() {
 
   const stats = useMemo(() => {
     const count = typeof profile?.visit_count === 'number' ? profile.visit_count : historyData.filter((h) => normalizeStatus(h.status) === 'completed').length;
-    const total = historyData.reduce((acc, item) => acc + parsePriceBs(item.price), 0);
+    const total = historyData.reduce(
+      (acc, item) => acc + (normalizeStatus(item.status) === 'completed' ? parsePriceBs(item.price) : 0),
+      0
+    );
     return { count, total };
   }, [historyData, profile?.visit_count]);
 
@@ -159,6 +172,41 @@ export default function HistoryScreen() {
     } finally {
       setReviewSaving(false);
     }
+  };
+
+  const confirmCancellation = async () => {
+    if (!cancelTarget || cancelling) return;
+    setCancelling(true);
+    setActionError(null);
+    try {
+      await cancelAppointment(cancelTarget.id);
+      await cancelAppointmentReminders(cancelTarget.id);
+      void triggerBookingPush({
+        kind: 'appointment_cancelled',
+        appointmentId: cancelTarget.id,
+      });
+      setCancelTarget(null);
+      await refresh();
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'No se pudo cancelar la reserva.');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const startReschedule = (item: HistoryRow) => {
+    if (!item.barberId || !item.serviceIds?.length) {
+      setActionError('Actualiza la aplicación e intenta nuevamente para reprogramar esta reserva.');
+      return;
+    }
+    navigation.navigate('Barbers', {
+      screen: 'BarberCalendar',
+      params: {
+        barber: { id: item.barberId, name: item.barber },
+        rescheduleAppointmentId: item.id,
+        initialServiceIds: item.serviceIds,
+      },
+    });
   };
 
   const listPaddingBottom = tabBarHeight + 20;
@@ -196,8 +244,10 @@ export default function HistoryScreen() {
   const renderItem = ({ item }: { item: HistoryRow }) => {
     const norm = normalizeStatus(item.status);
     const isNoShow = norm === 'no_show';
+    const isCancelled = norm === 'cancelled';
     const canReview =
       norm === 'completed' && item.barberId && !reviewedIds.has(item.id);
+    const canModifyStatus = norm === 'pending' || norm === 'confirmed';
 
     return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -207,8 +257,10 @@ export default function HistoryScreen() {
           <Text style={[styles.service, { color: colors.text }]}>{item.service}</Text>
           <Text style={[styles.price, { color: colors.primary }]}>{item.price}</Text>
         </View>
-        {isNoShow ? (
-          <Text style={[styles.noShowTxt, { color: colors.subtext }]}>No asistencia registrada</Text>
+        {isNoShow || isCancelled ? (
+          <Text style={[styles.noShowTxt, { color: colors.subtext }]}>
+            {isCancelled ? 'Reserva cancelada' : 'No asistencia registrada'}
+          </Text>
         ) : (
           <View style={styles.statusRow}>
             {STATUS_ORDER.map((s) => {
@@ -245,6 +297,36 @@ export default function HistoryScreen() {
           <TouchableOpacity style={[styles.reviewBtn, { borderColor: colors.primary }]} onPress={() => setReviewTarget(item)}>
             <Text style={[styles.reviewBtnTxt, { color: colors.primary }]}>Valorar al barbero</Text>
           </TouchableOpacity>
+        ) : null}
+        {canModifyStatus ? (
+          <>
+            <Text style={[styles.changePolicy, { color: colors.subtext }]}>
+              {item.canModify
+                ? `Puedes cancelar o reprogramar hasta ${item.modifyMinHours ?? 3} horas antes.`
+                : `El plazo de ${item.modifyMinHours ?? 3} horas para hacer cambios ya terminó.`}
+            </Text>
+            {item.canModify ? (
+              <View style={styles.bookingActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, { borderColor: colors.primary }]}
+                  onPress={() => startReschedule(item)}
+                >
+                  <Feather name="calendar" size={15} color={colors.primary} />
+                  <Text style={[styles.actionButtonText, { color: colors.primary }]}>Reprogramar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, { borderColor: '#D85B66' }]}
+                  onPress={() => {
+                    setActionError(null);
+                    setCancelTarget(item);
+                  }}
+                >
+                  <Feather name="x-circle" size={15} color="#D85B66" />
+                  <Text style={[styles.actionButtonText, { color: '#D85B66' }]}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </>
         ) : null}
       </View>
     </View>
@@ -334,6 +416,44 @@ export default function HistoryScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={!!cancelTarget} transparent animationType="fade" onRequestClose={() => !cancelling && setCancelTarget(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.text }]}>Cancelar reserva</Text>
+            <Text style={[styles.modalSub, { color: colors.subtext }]}>
+              ¿Confirmas la cancelación del {cancelTarget ? formatDateShort(cancelTarget.date) : ''} a las {cancelTarget?.time?.slice(0, 5)}?
+            </Text>
+            {actionError ? <Text style={styles.actionError}>{actionError}</Text> : null}
+            <View style={styles.modalActions}>
+              <TouchableOpacity disabled={cancelling} onPress={() => setCancelTarget(null)} style={styles.modalGhost}>
+                <Text style={{ color: colors.subtext, fontWeight: '700' }}>Volver</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={cancelling}
+                onPress={() => void confirmCancellation()}
+                style={[styles.modalPrimary, { backgroundColor: '#B83E4A', minWidth: 112, alignItems: 'center' }]}
+              >
+                {cancelling ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Sí, cancelar</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {actionError && !cancelTarget ? (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setActionError(null)}>
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>No se pudo completar</Text>
+              <Text style={[styles.modalSub, { color: colors.subtext }]}>{actionError}</Text>
+              <TouchableOpacity style={[styles.modalPrimary, { backgroundColor: colors.primary, alignSelf: 'flex-end' }]} onPress={() => setActionError(null)}>
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Entendido</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -445,6 +565,20 @@ function createStyles(colors: {
       alignItems: 'center',
     },
     reviewBtnTxt: { fontWeight: '700', fontSize: 14 },
+    changePolicy: { marginTop: 10, fontSize: 12, lineHeight: 17 },
+    bookingActions: { flexDirection: 'row', gap: 8, marginTop: 8 },
+    actionButton: {
+      flex: 1,
+      minHeight: 40,
+      borderWidth: 1,
+      borderRadius: 10,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+    },
+    actionButtonText: { fontSize: 13, fontWeight: '800' },
+    actionError: { color: '#D85B66', fontSize: 13, lineHeight: 18, marginBottom: 12 },
     modalBackdrop: {
       flex: 1,
       backgroundColor: 'rgba(0,0,0,0.5)',

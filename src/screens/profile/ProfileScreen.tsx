@@ -26,6 +26,7 @@ import { useAppTheme } from '../../theme/ThemeProvider';
 import { BARBER_WHATSAPP_URL } from '../../constants/contact';
 import type { ProfileStackParamList } from '../../navigation/ProfileStack';
 import AppDialog from '../../components/AppDialog';
+import { notificationsEnabled, setNotificationsEnabled } from '../../notifications/registration';
 
 type ProfileNav = CompositeNavigationProp<
   NativeStackNavigationProp<ProfileStackParamList, 'ProfileHome'>,
@@ -40,12 +41,34 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileNav }
 
   const { isDark, colors, toggleTheme } = useAppTheme();
 
-  const [pushEnabled, setPushEnabled] = useState(true);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushSaving, setPushSaving] = useState(false);
   const [darkMode, setDarkMode] = useState(isDark);
   const [logoutConfirmVisible, setLogoutConfirmVisible] = useState(false);
   const [errorDialog, setErrorDialog] = useState<string | null>(null);
 
   useEffect(() => setDarkMode(isDark), [isDark]);
+  useEffect(() => {
+    void notificationsEnabled(session?.user?.id).then(setPushEnabled);
+  }, [session?.user?.id]);
+
+  const changePushPreference = async (enabled: boolean) => {
+    const userId = session?.user?.id;
+    if (!userId || pushSaving) return;
+    setPushSaving(true);
+    try {
+      await setNotificationsEnabled({
+        enabled,
+        userId,
+        currentNativeTokens: profile?.push_tokens,
+      });
+      setPushEnabled(enabled);
+    } catch (error) {
+      setErrorDialog(error instanceof Error ? error.message : 'No se pudo cambiar la configuración de notificaciones.');
+    } finally {
+      setPushSaving(false);
+    }
+  };
 
   const displayName =
     profile?.name?.trim() || session?.user?.email?.split('@')[0] || 'Cliente';
@@ -80,7 +103,9 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileNav }
   const handleDeleteAccount = () => navigation.navigate('DeleteAccount');
 
   const goHistory = () => {
-    navigation.navigate('History' as never);
+    const parent = (navigation as unknown as { getParent?: () => { navigate: (name: string) => void } | undefined }).getParent?.();
+    if (role === 'barber') parent?.navigate('BarberBookings');
+    else parent?.navigate('History');
   };
 
   return (
@@ -148,9 +173,10 @@ export default function ProfileScreen({ navigation }: { navigation: ProfileNav }
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Preferencias</Text>
         <RowSwitch
           icon="bell"
-          label="Notificaciones push"
+          label={pushSaving ? 'Configurando notificaciones…' : 'Notificaciones push'}
           value={pushEnabled}
-          onValueChange={setPushEnabled}
+          onValueChange={(value) => void changePushPreference(value)}
+          disabled={pushSaving}
           color={colors}
         />
         <RowSwitch
@@ -264,12 +290,14 @@ function RowSwitch({
   label,
   value,
   onValueChange,
+  disabled = false,
   color,
 }: {
   icon: React.ComponentProps<typeof Feather>['name'];
   label: string;
   value: boolean;
   onValueChange: (v: boolean) => void;
+  disabled?: boolean;
   color: {
     card: string;
     border: string;
@@ -286,6 +314,7 @@ function RowSwitch({
       <Switch
         value={value}
         onValueChange={onValueChange}
+        disabled={disabled}
         trackColor={{ false: '#d9dde1', true: color.primary }}
         thumbColor="#fff"
       />

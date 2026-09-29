@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { isRunningInExpoGo } from 'expo';
 import { getPermissionsAsync, requestPermissionsAsync } from 'expo-notifications/build/NotificationPermissions';
 import { IosAuthorizationStatus } from 'expo-notifications/build/NotificationPermissions.types';
@@ -16,6 +17,11 @@ export async function ensureNotificationPermissions(): Promise<boolean> {
   if (current.granted || current.ios?.status === IosAuthorizationStatus.PROVISIONAL) return true;
   const request = await requestPermissionsAsync();
   return !!(request.granted || request.ios?.status === IosAuthorizationStatus.PROVISIONAL);
+}
+
+async function hasNotificationPermissions(): Promise<boolean> {
+  const current = await getPermissionsAsync();
+  return !!(current.granted || current.ios?.status === IosAuthorizationStatus.PROVISIONAL);
 }
 
 export async function registerPushToken(): Promise<string | null> {
@@ -35,7 +41,8 @@ export async function registerPushToken(): Promise<string | null> {
   }
 
   const { default: getExpoPushTokenAsync } = await import('expo-notifications/build/getExpoPushTokenAsync');
-  const token = await getExpoPushTokenAsync();
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+  const token = await getExpoPushTokenAsync(projectId ? { projectId } : undefined);
   return token.data ?? null;
 }
 
@@ -44,6 +51,8 @@ export async function showLocalNoticeNotification(title: string, body: string): 
     await showWebNotification(title, body);
     return;
   }
+
+  if (!(await hasNotificationPermissions())) return;
 
   await scheduleNotificationAsync({
     content: { title, body, sound: true },
@@ -83,7 +92,7 @@ type StaffReminderRow = {
 };
 
 export async function syncStaffAppointmentReminders(rows: StaffReminderRow[]): Promise<void> {
-  const ok = await ensureNotificationPermissions();
+  const ok = await hasNotificationPermissions();
   if (!ok) return;
 
   const scheduled = await getAllScheduledNotificationsAsync();
@@ -114,4 +123,20 @@ export async function syncStaffAppointmentReminders(rows: StaffReminderRow[]): P
       });
     }
   }
+}
+
+export async function cancelAppointmentReminders(appointmentId?: string): Promise<void> {
+  if (Platform.OS === 'web') return;
+  const scheduled = await getAllScheduledNotificationsAsync();
+  await Promise.all(
+    scheduled
+      .filter((row) => {
+        const data = row.content.data as Record<string, unknown> | undefined;
+        const kind = data?.kind;
+        const isAppointmentReminder = kind === 'staff_appt_reminder' || kind === 'client_appt_reminder';
+        if (!isAppointmentReminder) return false;
+        return !appointmentId || data?.appointmentId === appointmentId;
+      })
+      .map((row) => cancelScheduledNotificationAsync(row.identifier))
+  );
 }

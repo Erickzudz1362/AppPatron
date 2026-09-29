@@ -1,9 +1,9 @@
 import type { ImageSourcePropType } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../config/supabase';
 import { HOME_GALLERY_FOLDER, PROMO_CAROUSEL_BUCKET } from '../utils/storageUpload';
 import {
   DEFAULT_BARBER_AVATAR,
-  FALLBACK_HISTORY,
   type BarberListItem,
   type HistoryRow,
   type HomeBarber,
@@ -17,8 +17,13 @@ const warned = new Set<string>();
 const BARBERS_FULL_MEMORY_TTL_MS = 15_000;
 let barbersFullMemoryCache: BarberListItem[] | null = null;
 let barbersFullMemoryAt = 0;
+const HOME_BUNDLE_CACHE_KEY = 'el_patron_home_bundle_v2';
+const HOME_BUNDLE_MEMORY_TTL_MS = 30_000;
+const HOME_BUNDLE_DISK_TTL_MS = 2 * 60_000;
+let homeBundleMemoryCache: HomeBundle | null = null;
+let homeBundleMemoryAt = 0;
 
-function withTimeoutFallback<T>(promise: PromiseLike<T>, fallback: T, ms = 2800): Promise<T> {
+function withTimeoutFallback<T>(promise: PromiseLike<T>, fallback: T, ms = 6000): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<T>((resolve) => {
     timeoutId = setTimeout(() => resolve(fallback), ms);
@@ -45,28 +50,11 @@ function warnOnce(key: string, message: string) {
   console.warn(`[supabaseData] ${message}`);
 }
 
-type BarberRow = {
-  id: string;
-  user_id?: string;
-  active?: boolean | null;
-  specialties?: string[] | null;
-};
-
 type ServiceRow = {
   id: string;
   name?: string | null;
   price?: number | null;
 };
-
-function mapBarberRow(r: BarberRow, profileName?: string | null, profilePhotoUrl?: string | null): HomeBarber {
-  const baseName = profileName?.trim() || 'Barbero';
-  return {
-    id: String(r.id),
-    name: baseName,
-    available: r.active !== false,
-    avatarUrl: typeof profilePhotoUrl === 'string' && profilePhotoUrl.trim() ? profilePhotoUrl.trim() : null,
-  };
-}
 
 function mapServiceRow(r: ServiceRow, index: number): HomeService {
   const price = typeof r.price === 'number' ? `${r.price} Bs` : '-';
@@ -83,40 +71,23 @@ export async function fetchHomeBarbers(): Promise<HomeBarber[]> {
   if (!isSupabaseConfigured()) return [];
 
   const { data, error } = await withTimeoutFallback(
-    supabase
-      .from('barbers')
-      .select('id, user_id, active, specialties')
-      .eq('active', true)
-      .limit(24),
-    emptyPostgrest([] as BarberRow[]),
-    1400
+    supabase.rpc('get_public_barber_directory'),
+    emptyPostgrest([] as Array<{ id: string; name: string | null; photo_url: string | null; active: boolean }>),
+    4500
   );
   if (error) {
     warnOnce('barbers', error.message);
     return [];
   }
   if (!data?.length) return [];
-
-  const rows = data as BarberRow[];
-  const uids = Array.from(new Set(rows.map((r) => r.user_id).filter(Boolean))) as string[];
-  const nameByUser: Record<string, string> = {};
-  const photoByUser: Record<string, string | null> = {};
-
-  if (uids.length) {
-    const { data: profs } = await withTimeoutFallback(
-      supabase.from('profiles').select('id, name, photo_url').in('id', uids),
-      emptyPostgrest([] as Array<{ id: string; name: string | null; photo_url: string | null }>),
-      1400
-    );
-    ((profs ?? []) as { id: string; name: string | null; photo_url: string | null }[]).forEach((profile) => {
-      nameByUser[profile.id] = profile.name?.trim() || 'Barbero';
-      photoByUser[profile.id] = profile.photo_url?.trim()
-        ? optimizeSupabaseImageUrl(profile.photo_url.trim(), { width: 180, height: 180, quality: 78 })
-        : null;
-    });
-  }
-
-  return rows.map((row) => mapBarberRow(row, row.user_id ? nameByUser[row.user_id] : null, row.user_id ? photoByUser[row.user_id] : null));
+  return (data as Array<{ id: string; name: string | null; photo_url: string | null; active: boolean }>).map((row) => ({
+    id: row.id,
+    name: row.name?.trim() || 'Barbero',
+    available: row.active !== false,
+    avatarUrl: row.photo_url?.trim()
+      ? optimizeSupabaseImageUrl(row.photo_url.trim(), { width: 180, height: 180, quality: 78 })
+      : null,
+  }));
 }
 
 export async function fetchHomeServices(): Promise<HomeService[]> {
@@ -154,15 +125,15 @@ export type HomeBundle = {
 async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
   try {
     const [barbers, services, settingsRes, galleryRes] = await Promise.all([
-      withTimeoutFallback(fetchHomeBarbers(), [], 1500),
-      withTimeoutFallback(fetchHomeServices(), [], 1300),
+      withTimeoutFallback(fetchHomeBarbers(), [], 5000),
+      withTimeoutFallback(fetchHomeServices(), [], 5000),
       withTimeoutFallback(
         supabase
           .from('app_settings')
           .select('key, value')
           .in('key', ['home_story', 'home_testimonial', 'show_second_carousel', 'home_gallery_visible_count', 'whatsapp_contact', 'instagram_url', 'facebook_url', 'maps_url']),
         emptyPostgrest([] as Array<{ key: string; value: string }>),
-        1200
+        5000
       ),
       withTimeoutFallback(
         supabase.storage.from(PROMO_CAROUSEL_BUCKET).list(HOME_GALLERY_FOLDER, {
@@ -170,7 +141,7 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
           sortBy: { column: 'name', order: 'asc' },
         }),
         { data: [], error: null },
-        900
+        5000
       ),
     ]);
 
@@ -218,7 +189,36 @@ async function fetchHomeBundleFromNetwork(): Promise<HomeBundle> {
 }
 
 export async function fetchHomeBundle(): Promise<HomeBundle> {
-  return fetchHomeBundleFromNetwork();
+  const now = Date.now();
+  if (homeBundleMemoryCache && now - homeBundleMemoryAt < HOME_BUNDLE_MEMORY_TTL_MS) {
+    return homeBundleMemoryCache;
+  }
+
+  try {
+    const cached = await AsyncStorage.getItem(HOME_BUNDLE_CACHE_KEY);
+    if (cached) {
+      const parsed = JSON.parse(cached) as { at: number; value: HomeBundle };
+      if (parsed?.value && now - Number(parsed.at) < HOME_BUNDLE_DISK_TTL_MS) {
+        homeBundleMemoryCache = parsed.value;
+        homeBundleMemoryAt = Number(parsed.at);
+        return parsed.value;
+      }
+    }
+  } catch {
+    // El caché es una optimización; Supabase sigue siendo la fuente de verdad.
+  }
+
+  const value = await fetchHomeBundleFromNetwork();
+  homeBundleMemoryCache = value;
+  homeBundleMemoryAt = Date.now();
+  void AsyncStorage.setItem(HOME_BUNDLE_CACHE_KEY, JSON.stringify({ at: homeBundleMemoryAt, value })).catch(() => undefined);
+  return value;
+}
+
+export function invalidateHomeBundleCache(): void {
+  homeBundleMemoryCache = null;
+  homeBundleMemoryAt = 0;
+  void AsyncStorage.removeItem(HOME_BUNDLE_CACHE_KEY).catch(() => undefined);
 }
 
 function mapBarberFullRow(
@@ -259,13 +259,9 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
   }
 
   const { data, error } = await withTimeoutFallback(
-    supabase
-      .from('barbers')
-      .select('id, user_id, active, specialties')
-      .eq('active', true)
-      .limit(40),
+    supabase.rpc('get_public_barber_directory'),
     emptyPostgrest([] as Record<string, unknown>[]),
-    1500
+    4500
   );
   if (error) {
     warnOnce('barbers_full', error.message);
@@ -274,91 +270,20 @@ export async function fetchBarbersFull(): Promise<BarberListItem[]> {
   if (!data?.length) return [];
 
   const rows = data as Record<string, unknown>[];
-  const uids = Array.from(new Set(rows.map((row) => String(row.user_id ?? '')).filter(Boolean)));
-  const barberIds = rows.map((row) => String(row.id));
-  const [profilesRes, reviewsRes] = await Promise.all([
-    uids.length
-      ? withTimeoutFallback(
-          supabase.from('profiles').select('id, name, photo_url').in('id', uids),
-          emptyPostgrest([] as Array<{ id: string; name: string | null; photo_url: string | null }>),
-          1600
-        )
-      : Promise.resolve({ data: [] }),
-    barberIds.length
-      ? withTimeoutFallback(
-          supabase.from('barber_reviews').select('barber_id, rating').in('barber_id', barberIds),
-          emptyPostgrest([] as Array<{ barber_id: string; rating: number }>),
-          1400
-        )
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  const profs = profilesRes.data;
-
-  const profileByUser: Record<string, { name: string; photoUrl: string | null }> = {};
-  ((profs ?? []) as { id: string; name: string | null; photo_url: string | null }[]).forEach((profile) => {
-    profileByUser[profile.id] = {
-      name: profile.name?.trim() || 'Barbero',
-      photoUrl: profile.photo_url?.trim()
-        ? optimizeSupabaseImageUrl(profile.photo_url.trim(), { width: 180, height: 180, quality: 78 })
-        : null,
-    };
-  });
-
-  const avgByBarber: Record<string, number> = {};
-  const countByBarber: Record<string, number> = {};
-  const { data: reviews, error: reviewsError } = reviewsRes as {
-    data: { barber_id: string; rating: number }[] | null;
-    error: { message: string } | null;
-  };
-  if (!reviewsError && reviews?.length) {
-    const sums: Record<string, { sum: number; count: number }> = {};
-    (reviews as { barber_id: string; rating: number }[]).forEach((review) => {
-      if (!sums[review.barber_id]) sums[review.barber_id] = { sum: 0, count: 0 };
-      sums[review.barber_id].sum += Number(review.rating) || 0;
-      sums[review.barber_id].count += 1;
-    });
-    Object.keys(sums).forEach((id) => {
-      const { sum, count } = sums[id];
-      avgByBarber[id] = count ? Math.round((sum / count) * 10) / 10 : 0;
-      countByBarber[id] = count;
-    });
-  }
-
-  const mapped = rows.map((row) => {
-    const userId = String(row.user_id ?? '');
-    const profile = profileByUser[userId];
-    const rating = avgByBarber[String(row.id)] ?? 0;
-    const ratingCount = countByBarber[String(row.id)] ?? 0;
-    return mapBarberFullRow(row, profile?.name ?? 'Barbero', profile?.photoUrl ?? null, rating, ratingCount);
-  });
+  const mapped = rows.map((row) => mapBarberFullRow(
+    row,
+    typeof row.name === 'string' ? row.name : 'Barbero',
+    typeof row.photo_url === 'string' ? row.photo_url : null,
+    Number(row.rating ?? 0),
+    Number(row.rating_count ?? 0)
+  ));
   barbersFullMemoryCache = mapped;
   barbersFullMemoryAt = Date.now();
   return mapped;
 }
 
-function mapAppointmentRow(r: Record<string, unknown>, barberName: string, serviceName: string): HistoryRow {
-  const rawDate = r.date ?? r.appointment_date ?? r.created_at;
-  const date = typeof rawDate === 'string' ? rawDate.slice(0, 10) : '';
-  const rawTime = typeof r.time === 'string' ? r.time : '';
-  const time = rawTime ? rawTime.slice(0, 5) : '';
-  const snapshot = r.total_price_snapshot;
-  const price = typeof snapshot === 'number' && Number.isFinite(snapshot) ? `${snapshot} Bs` : '-';
-
-  return {
-    id: String(r.id),
-    service: serviceName,
-    barber: barberName || 'Barbero',
-    barberId: String(r.barber_id ?? ''),
-    date,
-    time,
-    status: typeof r.status === 'string' ? r.status : 'booked',
-    notes: typeof r.notes === 'string' ? r.notes : undefined,
-    price,
-  };
-}
-
 export async function fetchHistoryRows(): Promise<HistoryRow[]> {
-  if (!isSupabaseConfigured()) return FALLBACK_HISTORY;
+  if (!isSupabaseConfigured()) return [];
 
   const sessionResult = await withTimeoutFallback(
     supabase.auth.getSession(),
@@ -371,72 +296,44 @@ export async function fetchHistoryRows(): Promise<HistoryRow[]> {
   const uid = session?.user?.id;
   if (!uid) return [];
 
-  const { data, error } = await withTimeoutFallback(
-    supabase
-      .from('appointments')
-      .select('id, barber_id, service_id, date, time, status, notes, total_price_snapshot')
-      .eq('client_id', uid)
-      .order('date', { ascending: false })
-      .limit(50),
+  let { data, error } = await withTimeoutFallback(
+    supabase.rpc('get_client_history_v2', { p_limit: 50 }),
     emptyPostgrest([] as Record<string, unknown>[]),
-    1500
+    6000
   );
+
+  if (error && /get_client_history_v2|schema cache|could not find/i.test(error.message)) {
+    const legacy = await withTimeoutFallback(
+      supabase.rpc('get_client_history', { p_limit: 50 }),
+      emptyPostgrest([] as Record<string, unknown>[]),
+      6000
+    );
+    data = legacy.data;
+    error = legacy.error;
+  }
 
   if (error) {
     warnOnce('appointments', error.message);
-    return FALLBACK_HISTORY;
+    throw new Error('No pudimos cargar tus reservas. Intenta nuevamente.');
   }
   if (!data?.length) return [];
 
-  const rows = data as Record<string, unknown>[];
-  const barberIds = Array.from(new Set(rows.map((row) => String(row.barber_id ?? '')).filter(Boolean)));
-  const serviceIds = Array.from(new Set(rows.map((row) => String(row.service_id ?? '')).filter(Boolean)));
-
-  const [barbersRes, servicesRes] = await Promise.all([
-    barberIds.length
-      ? withTimeoutFallback(
-          supabase.from('barbers').select('id, user_id').in('id', barberIds),
-          emptyPostgrest([] as Array<{ id: string; user_id: string }>),
-          1500
-        )
-      : Promise.resolve({ data: [] as { id: string; user_id: string }[] }),
-    serviceIds.length
-      ? withTimeoutFallback(
-          supabase.from('services').select('id, name').in('id', serviceIds),
-          emptyPostgrest([] as Array<{ id: string; name: string | null }>),
-          1500
-        )
-      : Promise.resolve({ data: [] as { id: string; name: string | null }[] }),
-  ]);
-
-  const barberRows = (barbersRes as { data: { id: string; user_id: string }[] | null }).data ?? [];
-  const userIds = Array.from(new Set(barberRows.map((row) => row.user_id)));
-  const { data: profiles } = userIds.length
-    ? await withTimeoutFallback(
-        supabase.from('profiles').select('id, name').in('id', userIds),
-        emptyPostgrest([] as Array<{ id: string; name: string | null }>),
-        1400
-      )
-    : { data: [] };
-
-  const profileNames: Record<string, string> = {};
-  ((profiles ?? []) as { id: string; name: string | null }[]).forEach((profile) => {
-    profileNames[profile.id] = profile.name?.trim() || 'Barbero';
-  });
-
-  const barberNameById: Record<string, string> = {};
-  barberRows.forEach((barber) => {
-    barberNameById[barber.id] = profileNames[barber.user_id] ?? 'Barbero';
-  });
-
-  const serviceNames: Record<string, string> = {};
-  ((servicesRes as { data: { id: string; name: string | null }[] | null }).data ?? []).forEach((service) => {
-    serviceNames[service.id] = service.name?.trim() || 'Servicio';
-  });
-
-  return rows.map((row) =>
-    mapAppointmentRow(row, barberNameById[String(row.barber_id ?? '')] ?? 'Barbero', serviceNames[String(row.service_id ?? '')] ?? 'Servicio')
-  );
+  return (data as Record<string, unknown>[]).map((row) => ({
+    id: String(row.id),
+    service: String(row.service ?? 'Servicio'),
+    barber: String(row.barber ?? 'Barbero'),
+    barberId: String(row.barber_id ?? ''),
+    date: String(row.date ?? '').slice(0, 10),
+    time: String(row.time ?? '').slice(0, 5),
+    status: String(row.status ?? 'pending'),
+    notes: typeof row.notes === 'string' ? row.notes : undefined,
+    price: `${Number(row.total ?? 0)} Bs`,
+    serviceIds: Array.isArray(row.service_ids) ? row.service_ids.map(String) : undefined,
+    durationMinutes: Number.isFinite(Number(row.duration_minutes)) ? Number(row.duration_minutes) : undefined,
+    modifyMinHours: Number.isFinite(Number(row.modify_min_hours)) ? Number(row.modify_min_hours) : 3,
+    canModify: row.can_modify === true,
+    modifyDeadline: typeof row.modify_deadline === 'string' ? row.modify_deadline : undefined,
+  }));
 }
 
 function mapNoticeRow(r: Record<string, unknown>, readOverride?: boolean): NoticeItem {

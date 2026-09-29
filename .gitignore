@@ -2,12 +2,17 @@
 
 # dependencies
 node_modules/
+pnpm-lock.yaml
 
 # Expo
 .expo/
 dist/
 dist-web/
 web-build/
+/_expo/
+/fonts/
+/assets/assets/
+/assets/node_modules/
 expo-env.d.ts
 
 # Native

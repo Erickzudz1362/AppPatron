@@ -51,7 +51,7 @@ export default function PromoCarousel() {
           limit: 20,
           sortBy: { column: 'name', order: 'asc' },
         }),
-        1700
+        5000
       );
 
       if (!result || result.error || !mounted) {

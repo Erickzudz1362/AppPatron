@@ -20,7 +20,7 @@ import { useAppTheme } from '../../theme/ThemeProvider';
 import { supabase } from '../../config/supabase';
 import { downloadImageFileOnWeb } from '../../utils/webDownloads';
 
-const QR_FALLBACK = require('../../../assets/icon.png');
+const QR_FALLBACK = require('../../../assets/splash-icon.png');
 const QR_STORAGE_BUCKET =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_QR_BUCKET?.trim()) || 'payment-assets';
 const QR_STORAGE_PATH =

@@ -177,8 +177,8 @@
     </main>
 
     <script>
-      const SUPABASE_URL = 'https://pxywkdvowroehpukujba.supabase.co';
-      const FALLBACK_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB4eXdrZHZvd3JvZWhwdWt1amJhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc3MTI1MzQsImV4cCI6MjA4MzI4ODUzNH0.aRPa94rBKT86-oEP6RUOWBJHXQgKaLZX1RjuNdnbbuo';
+      const SUPABASE_URL = '__SUPABASE_URL__';
+      const FALLBACK_ANON_KEY = '__SUPABASE_ANON_KEY__';
       const params = new URLSearchParams(window.location.hash.replace(/^#/, '') || window.location.search.replace(/^\?/, ''));
       const type = params.get('type');
       const accessToken = params.get('access_token');

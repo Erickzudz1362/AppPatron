@@ -1,16 +1,40 @@
-import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { useAuth } from '../../context/AuthContext';
 import { useAppTheme } from '../../theme/ThemeProvider';
+import { notificationsEnabled, setNotificationsEnabled } from '../../notifications/registration';
+import AppDialog from '../../components/AppDialog';
 
 export default function StaffHomeScreen({ navigation }: any) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { role, actualRole, setAdminViewRole, signOut, profile } = useAuth();
+  const { role, actualRole, setAdminViewRole, signOut, profile, session } = useAuth();
   const isAdmin = role === 'admin';
   const canSwitchMode = actualRole === 'admin';
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushSaving, setPushSaving] = useState(false);
+  const [dialog, setDialog] = useState<string | null>(null);
+
+  useEffect(() => {
+    void notificationsEnabled(session?.user?.id).then(setPushEnabled);
+  }, [session?.user?.id]);
+
+  const toggleNotifications = async () => {
+    const userId = session?.user?.id;
+    if (!userId || pushSaving) return;
+    const next = !pushEnabled;
+    setPushSaving(true);
+    try {
+      await setNotificationsEnabled({ enabled: next, userId, currentNativeTokens: profile?.push_tokens });
+      setPushEnabled(next);
+    } catch (error) {
+      setDialog(error instanceof Error ? error.message : 'No se pudieron configurar las notificaciones.');
+    } finally {
+      setPushSaving(false);
+    }
+  };
 
   const modules = [
     { key: 'Bookings', title: 'Reservas', subtitle: 'Hoy, estados y clientes', icon: 'calendar' as const, visible: true },
@@ -48,6 +72,17 @@ export default function StaffHomeScreen({ navigation }: any) {
           </View>
         </View>
 
+        <TouchableOpacity style={styles.notificationCard} onPress={() => void toggleNotifications()} disabled={pushSaving}>
+          <View style={styles.cardIcon}>
+            <Feather name={pushEnabled ? 'bell' : 'bell-off'} size={20} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.notificationTitle}>Avisos de nuevas reservas</Text>
+            <Text style={styles.cardSub}>{pushEnabled ? 'Activos en este dispositivo' : 'Actívalos para responder más rápido'}</Text>
+          </View>
+          {pushSaving ? <ActivityIndicator color={colors.primary} /> : <Feather name="chevron-right" size={20} color={colors.subtext} />}
+        </TouchableOpacity>
+
         <Text style={styles.section}>Accesos rápidos</Text>
         <View style={styles.grid}>
           {modules.map((module) => (
@@ -78,6 +113,7 @@ export default function StaffHomeScreen({ navigation }: any) {
           <Text style={styles.logoutTxt}>Cerrar sesión</Text>
         </TouchableOpacity>
       </ScrollView>
+      <AppDialog visible={!!dialog} title="Notificaciones" message={dialog ?? ''} onClose={() => setDialog(null)} />
     </SafeAreaView>
   );
 }
@@ -118,6 +154,11 @@ function createStyles(colors: {
     summaryValue: { color: colors.text, fontSize: 20, fontWeight: '900' },
     summaryLabel: { color: colors.subtext, marginTop: 4, fontWeight: '700' },
     section: { color: colors.text, fontSize: 18, fontWeight: '900', marginBottom: 10 },
+    notificationCard: {
+      flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, padding: 14,
+      backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, marginBottom: 18,
+    },
+    notificationTitle: { color: colors.text, fontWeight: '900', fontSize: 15 },
     grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
     card: {
       width: '48%',

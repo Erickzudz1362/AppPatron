@@ -6,7 +6,7 @@ import { useAppTheme } from '../../theme/ThemeProvider';
 import AppDialog from '../../components/AppDialog';
 import { StaffScreenHeader } from '../../components/StaffScreenHeader';
 
-const SETTINGS_KEYS = ['whatsapp_contact', 'instagram_url', 'facebook_url', 'maps_url', 'min_reservation_hours'] as const;
+const SETTINGS_KEYS = ['whatsapp_contact', 'instagram_url', 'facebook_url', 'maps_url', 'min_reservation_hours', 'appointment_change_min_hours'] as const;
 
 export default function StaffSettingsScreen({ navigation }: any) {
   const { colors } = useAppTheme();
@@ -16,6 +16,7 @@ export default function StaffSettingsScreen({ navigation }: any) {
   const [facebook, setFacebook] = useState('');
   const [maps, setMaps] = useState('');
   const [minHours, setMinHours] = useState('3');
+  const [changeMinHours, setChangeMinHours] = useState('3');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
@@ -40,6 +41,7 @@ export default function StaffSettingsScreen({ navigation }: any) {
       setFacebook(pick('facebook_url'));
       setMaps(pick('maps_url'));
       setMinHours(pick('min_reservation_hours') || '3');
+      setChangeMinHours(pick('appointment_change_min_hours') || '3');
       setLoading(false);
     })();
     return () => { mounted = false; };
@@ -47,8 +49,9 @@ export default function StaffSettingsScreen({ navigation }: any) {
 
   const save = async () => {
     const hours = Number(minHours);
-    if (!Number.isFinite(hours) || hours < 0) {
-      setDialog({ title: 'Valor inválido', message: 'Las horas mínimas deben ser un número válido.' });
+    const changeHours = Number(changeMinHours);
+    if (!Number.isInteger(hours) || hours < 0 || hours > 72 || !Number.isInteger(changeHours) || changeHours < 3 || changeHours > 72) {
+      setDialog({ title: 'Valor inválido', message: 'La anticipación para reservar debe estar entre 0 y 72 horas; para cancelar o reprogramar, entre 3 y 72 horas.' });
       return;
     }
     setSaving(true);
@@ -58,6 +61,7 @@ export default function StaffSettingsScreen({ navigation }: any) {
       { key: 'facebook_url', value: facebook.trim() },
       { key: 'maps_url', value: maps.trim() },
       { key: 'min_reservation_hours', value: String(hours) },
+      { key: 'appointment_change_min_hours', value: String(changeHours) },
     ];
     const { error } = await supabase.from('app_settings').upsert(rows, { onConflict: 'key' });
     setSaving(false);
@@ -135,6 +139,14 @@ export default function StaffSettingsScreen({ navigation }: any) {
           style={styles.input}
           value={minHours}
           onChangeText={setMinHours}
+          keyboardType="number-pad"
+          placeholderTextColor={colors.subtext}
+        />
+        <Text style={styles.label}>Horas mínimas para cancelar o reprogramar (mínimo 3)</Text>
+        <TextInput
+          style={styles.input}
+          value={changeMinHours}
+          onChangeText={setChangeMinHours}
           keyboardType="number-pad"
           placeholderTextColor={colors.subtext}
         />

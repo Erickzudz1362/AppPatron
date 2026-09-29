@@ -10,6 +10,7 @@ import AppDialog from '../../components/AppDialog';
 import { StaffScreenHeader } from '../../components/StaffScreenHeader';
 import { syncStaffAppointmentReminders } from '../../notifications/push';
 import { triggerBookingPush } from '../../notifications/remotePush';
+import { notificationsEnabled } from '../../notifications/registration';
 
 type Row = {
   id: string;
@@ -48,7 +49,7 @@ const STATUS_TONE: Record<string, { bg: string; border: string; text: string; do
 
 let staffBookingDetailsRpcAvailable: boolean | null = null;
 
-function withTimeoutFallback<T>(promise: PromiseLike<T>, fallback: T, ms = 1800): Promise<T> {
+function withTimeoutFallback<T>(promise: PromiseLike<T>, fallback: T, ms = 5000): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<T>((resolve) => {
     timeoutId = setTimeout(() => resolve(fallback), ms);
@@ -113,6 +114,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
   const [selectedBarberId, setSelectedBarberId] = useState<string>('all');
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadInFlightRef = useRef(false);
 
   const dateOptions = useMemo(() => upcomingDates(), []);
   const today = useMemo(() => todayIso(), []);
@@ -120,6 +122,8 @@ export default function StaffBookingsScreen({ navigation }: any) {
 
   const load = useCallback(async (showLoader = true) => {
     if (!session?.user?.id) return;
+    if (loadInFlightRef.current) return;
+    loadInFlightRef.current = true;
     if (showLoader) setLoading(true);
 
     try {
@@ -135,7 +139,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
             data: null,
             error: { message: 'timeout' },
           } as any,
-          1400
+          5000
         );
         if (!rpcRes.error && Array.isArray(rpcRes.data)) {
           staffBookingDetailsRpcAvailable = true;
@@ -160,7 +164,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
             const { data: allBarbers } = await withTimeoutFallback(
               supabase.rpc('get_admin_barber_directory'),
               emptyPostgrest([] as Array<{ id: string; name: string | null }>),
-              1200
+              5000
             );
             const options = ((allBarbers ?? []) as Array<{ id: string; name: string | null }>).map((barber) => ({
               id: barber.id,
@@ -199,7 +203,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
       const { data, error } = await withTimeoutFallback(
         query,
         emptyPostgrest([] as Row[]),
-        1600
+        5000
       );
       if (error) {
         setDialog({ title: 'Error', message: error.message });
@@ -216,14 +220,14 @@ export default function StaffBookingsScreen({ navigation }: any) {
           ? withTimeoutFallback(
               supabase.from('profiles').select('id, name, phone, visit_count').in('id', clientIds),
               emptyPostgrest([] as ProfileMini[]),
-              1200
+              5000
             )
           : Promise.resolve({ data: [] }),
         isAdmin
           ? withTimeoutFallback(
               supabase.from('barbers').select('id, user_id'),
               emptyPostgrest([] as BarberMini[]),
-              1200
+              5000
             )
           : Promise.resolve({ data: [] }),
       ]);
@@ -240,7 +244,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
         ? await withTimeoutFallback(
             supabase.from('profiles').select('id, name').in('id', allUserIds),
             emptyPostgrest([] as Array<{ id: string; name: string | null }>),
-            1200
+            5000
           )
         : { data: [] };
       const nameByUser: Record<string, string> = {};
@@ -258,6 +262,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
       setBarberNameMap(nextBarberMap);
       setBarberOptions(allBarbers.map((barber) => ({ id: barber.id, name: nextBarberMap[barber.id] ?? 'Barbero' })));
     } finally {
+      loadInFlightRef.current = false;
       if (showLoader) setLoading(false);
     }
   }, [isAdmin, isBarber, selectedBarberId, selectedDate, session?.user?.id, statusFilter]);
@@ -274,8 +279,11 @@ export default function StaffBookingsScreen({ navigation }: any) {
 
   useEffect(() => {
     if (!rows.length || (role !== 'admin' && role !== 'barber')) return;
-    void syncStaffAppointmentReminders(rows.map((row) => ({ id: row.id, date: row.date, time: row.time, status: row.status })));
-  }, [role, rows]);
+    void notificationsEnabled(session?.user?.id).then((enabled) => {
+      if (!enabled) return;
+      return syncStaffAppointmentReminders(rows.map((row) => ({ id: row.id, date: row.date, time: row.time, status: row.status })));
+    });
+  }, [role, rows, session?.user?.id]);
 
   useEffect(() => {
     const refreshSoon = () => {
@@ -292,7 +300,7 @@ export default function StaffBookingsScreen({ navigation }: any) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'barbers' }, refreshSoon)
       .subscribe();
 
-    const intervalId = setInterval(refreshSoon, 60_000);
+    const intervalId = setInterval(refreshSoon, 5 * 60_000);
 
     return () => {
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current);
@@ -300,17 +308,6 @@ export default function StaffBookingsScreen({ navigation }: any) {
       void supabase.removeChannel(bookingsChannel);
     };
   }, [load, role]);
-
-  const notifyClient = async (clientId: string, message: string) => {
-    const { error } = await supabase.from('notifications').insert({
-      type: 'sistema',
-      title: 'Actualizacion de reserva',
-      message,
-      target_user_id: clientId,
-      is_active: true,
-    });
-    if (error) throw error;
-  };
 
   const updateStatus = async (row: Row, next: 'confirmed' | 'completed' | 'no_show' | 'cancelled') => {
     // RPC atómica: cambia estado + ajusta visit_count en una transacción SQL.
@@ -323,18 +320,9 @@ export default function StaffBookingsScreen({ navigation }: any) {
       return;
     }
 
-    const message =
-      next === 'completed'
-        ? 'Tu corte finalizo. Ya puedes entrar a la app y dejar tu resena del barbero.'
-        : `Tu reserva cambio a: ${STATUS_LABEL[next]}`;
-    await notifyClient(row.client_id, message);
     await triggerBookingPush({
       kind: 'reservation_status_changed',
-      clientId: row.client_id,
-      barberId: row.barber_id,
-      status: next,
-      statusLabel: STATUS_LABEL[next],
-      barberName: barberNameMap[row.barber_id] ?? 'Barbero',
+      appointmentId: row.id,
     });
     void load(false);
   };

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   Image,
   Linking,
   RefreshControl,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import type { ImageSourcePropType } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,7 +19,7 @@ import PromoCarousel from '../../components/PromoCarousel';
 import { HomeSkeleton } from '../../components/skeleton/HomeSkeleton';
 import { EmptyState } from '../../components/EmptyState';
 import { useAsyncResource } from '../../hooks/useAsyncResource';
-import { fetchHomeBundle } from '../../api/supabaseData';
+import { fetchHomeBundle, invalidateHomeBundleCache } from '../../api/supabaseData';
 import { DEFAULT_BARBER_AVATAR } from '../../api/fallbackData';
 import { supabase } from '../../config/supabase';
 import { useAppTheme } from '../../theme/ThemeProvider';
@@ -27,7 +27,6 @@ import { useAuth } from '../../context/AuthContext';
 import { optimizeSupabaseImageUrl, prefetchImageUrls } from '../../utils/imageUrls';
 import { RemoteImage } from '../../components/RemoteImage';
 
-const { width } = Dimensions.get('window');
 const SECOND_CAROUSEL_BUCKET =
   (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_HOME_CAROUSEL_BUCKET?.trim()) ||
   'home-carousel';
@@ -52,7 +51,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
 export default function HomeScreen({ navigation }: any) {
   const { colors } = useAppTheme();
   const { profile } = useAuth();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { width: windowWidth } = useWindowDimensions();
+  const promoCardWidth = Math.min(Math.max(windowWidth * 0.78, 260), 520);
+  const styles = useMemo(() => createStyles(colors, promoCardWidth), [colors, promoCardWidth]);
   const tabBarHeight = useBottomTabBarHeight();
   const { data, error, refresh, refreshSilently, showSkeleton, isRefreshing } = useAsyncResource(fetchHomeBundle);
 
@@ -74,6 +75,8 @@ export default function HomeScreen({ navigation }: any) {
 
   const [galleryFailed, setGalleryFailed] = useState<boolean[]>([false, false, false, false]);
   const [secondCarouselUrls, setSecondCarouselUrls] = useState<string[]>([]);
+  const [secondCarouselIndex, setSecondCarouselIndex] = useState(0);
+  const secondCarouselRef = useRef<ScrollView>(null);
   const realtimeRefreshTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -93,7 +96,7 @@ export default function HomeScreen({ navigation }: any) {
           limit: 12,
           sortBy: { column: 'name', order: 'asc' },
         }),
-        1500
+        5000
       );
 
       if (!result || result.error) return;
@@ -127,6 +130,11 @@ export default function HomeScreen({ navigation }: any) {
     return raw.split(/\s+/)[0] ?? '';
   }, [profile?.name]);
 
+  const refreshFromNetwork = React.useCallback(() => {
+    invalidateHomeBundleCache();
+    return refresh();
+  }, [refresh]);
+
   const getEstimatedTime = (serviceName: string) => {
     const lower = serviceName.toLowerCase();
     if (lower.includes('barba')) return '20-30 min';
@@ -151,6 +159,21 @@ export default function HomeScreen({ navigation }: any) {
     void loadSecondCarousel();
   }, [loadSecondCarousel, showSecondCarousel]);
 
+  useEffect(() => {
+    if (secondCarouselUrls.length < 2) {
+      setSecondCarouselIndex(0);
+      return undefined;
+    }
+    const intervalId = setInterval(() => {
+      setSecondCarouselIndex((current) => {
+        const next = (current + 1) % secondCarouselUrls.length;
+        secondCarouselRef.current?.scrollTo({ x: next * (promoCardWidth + 10), animated: true });
+        return next;
+      });
+    }, 4200);
+    return () => clearInterval(intervalId);
+  }, [promoCardWidth, secondCarouselUrls.length]);
+
   useFocusEffect(
     React.useCallback(() => {
       void refreshSilently();
@@ -166,6 +189,7 @@ export default function HomeScreen({ navigation }: any) {
     const refreshSoon = () => {
       if (realtimeRefreshTimerRef.current) clearTimeout(realtimeRefreshTimerRef.current);
       realtimeRefreshTimerRef.current = setTimeout(() => {
+        invalidateHomeBundleCache();
         void refreshSilently();
         if (showSecondCarousel) {
           void loadSecondCarousel(true);
@@ -180,7 +204,6 @@ export default function HomeScreen({ navigation }: any) {
     const homeChannel = supabase
       .channel('home-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'barbers' }, refreshSoon)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, refreshSoon)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'services' }, refreshSoon)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, refreshSoon)
       .subscribe();
@@ -228,7 +251,7 @@ export default function HomeScreen({ navigation }: any) {
       <ScrollView
         style={[styles.container, { backgroundColor: colors.background }]}
         contentContainerStyle={[styles.homeContent, { paddingBottom: tabBarHeight + 24 }]}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refreshFromNetwork} tintColor={colors.primary} />}
       >
         <View style={styles.header}>
           <View>
@@ -317,7 +340,20 @@ export default function HomeScreen({ navigation }: any) {
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Promociones de la semana</Text>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.secondCarousel}>
+            <ScrollView
+              ref={secondCarouselRef}
+              horizontal
+              pagingEnabled={false}
+              decelerationRate="fast"
+              snapToInterval={promoCardWidth + 10}
+              snapToAlignment="start"
+              showsHorizontalScrollIndicator={false}
+              style={styles.secondCarousel}
+              onMomentumScrollEnd={(event) => {
+                const next = Math.round(event.nativeEvent.contentOffset.x / (promoCardWidth + 10));
+                setSecondCarouselIndex(Math.max(0, Math.min(next, secondCarouselUrls.length - 1)));
+              }}
+            >
               {secondCarouselSources.map((source, index) => (
                 <View key={`promo-slide-${index}`} style={styles.promoCard}>
                   {typeof source === 'object' && source != null && 'uri' in source ? (
@@ -439,7 +475,7 @@ function createStyles(colors: {
   border: string;
   mutedBg: string;
   success: string;
-}) {
+}, promoCardWidth: number) {
   return StyleSheet.create({
     container: { flex: 1 },
     homeContent: {
@@ -480,7 +516,7 @@ function createStyles(colors: {
     quickText: { color: colors.text, fontWeight: '500' },
     secondCarousel: { marginTop: 2, marginBottom: 10 },
     promoCard: {
-      width: width * 0.72,
+      width: promoCardWidth,
       height: 142,
       borderRadius: 14,
       overflow: 'hidden',

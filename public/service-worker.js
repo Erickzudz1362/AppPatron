@@ -1,4 +1,4 @@
-const CACHE_NAME = 'el-patron-pwa-v11';
+const CACHE_NAME = 'el-patron-pwa-v15';
 const CORE_ASSETS = [
   '/',
   '/manifest.webmanifest',
@@ -11,7 +11,6 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS)).catch(() => undefined)
   );
-  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -70,19 +69,15 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.match('/').then((cached) => {
-        const network = fetch(event.request, { cache: 'no-store' })
-          .then((response) => {
-            if (response.ok) {
-              const copy = response.clone();
-              caches.open(CACHE_NAME).then((cache) => cache.put('/', copy)).catch(() => undefined);
-            }
-            return response;
-          })
-          .catch(() => cached);
-
-        return cached || network;
-      })
+      fetch(event.request, { cache: 'no-store' })
+        .then((response) => {
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put('/', copy)).catch(() => undefined);
+          }
+          return response;
+        })
+        .catch(async () => (await caches.match('/')) || Response.error())
     );
     return;
   }
@@ -91,7 +86,12 @@ self.addEventListener('fetch', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  const payload = event.data?.json?.() ?? {};
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = { body: event.data?.text?.() || 'Tienes una novedad en la app.' };
+  }
   const title = payload.title || 'El Patrón';
   const body = payload.body || payload.message || 'Tienes una novedad en la app.';
 
@@ -100,7 +100,7 @@ self.addEventListener('push', (event) => {
       body,
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: payload.tag || 'el-patron-push',
+      tag: payload.tag || `el-patron-push-${Date.now()}`,
       renotify: true,
       data: payload.data || { url: '/' },
     })

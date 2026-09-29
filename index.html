@@ -24,7 +24,7 @@
       }
     </style>
   <link rel="icon" href="/favicon.ico" />    <style id="el-patron-icon-font">@font-face{font-family:feather;src:url("/fonts/Feather.ttf") format("truetype");font-display:block;}@font-face{font-family:Feather;src:url("/fonts/Feather.ttf") format("truetype");font-display:block;}[style*="font-family: feather"],[style*="font-family:feather"],[style*="fontFamily: feather"]{font-family:feather!important;line-height:1!important;vertical-align:middle!important;-webkit-font-smoothing:antialiased;}</style>
-    <style id="el-patron-web-polish">input,textarea,[contenteditable="true"]{outline:none!important;box-shadow:none!important;-webkit-tap-highlight-color:transparent!important;}input:focus,textarea:focus{outline:none!important;box-shadow:none!important;}*{-webkit-tap-highlight-color:transparent;}</style>
+    <style id="el-patron-web-polish">*{-webkit-tap-highlight-color:transparent;}input,textarea,[contenteditable="true"]{box-shadow:none!important;}input:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid #08b9c7!important;outline-offset:2px;}</style>
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#08b9c7" />
@@ -43,12 +43,5 @@
     <div id="root"></div>
   <script src="/_expo/static/js/web/index-b0f389d616cd9dcf6f41c1a5d97a4ae3.js" defer></script>
 
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('/service-worker.js').catch(function () {});
-      });
-    }
-  </script>
 </body>
 </html>

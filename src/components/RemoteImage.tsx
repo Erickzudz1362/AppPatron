@@ -1,5 +1,6 @@
 import React from 'react';
-import { Image, type ImageProps, type ImageSourcePropType } from 'react-native';
+import { type ImageProps, type ImageSourcePropType } from 'react-native';
+import { Image } from 'expo-image';
 import { optimizeSupabaseImageUrl, originalSupabaseImageUrl } from '../utils/imageUrls';
 
 type Props = Omit<ImageProps, 'source'> & {
@@ -13,7 +14,7 @@ type Props = Omit<ImageProps, 'source'> & {
   };
 };
 
-export function RemoteImage({ uri, fallbackSource, optimize, onError, ...props }: Props) {
+export function RemoteImage({ uri, fallbackSource, optimize, onError, resizeMode, ...props }: Props) {
   const originalUri = typeof uri === 'string' && uri.trim() ? originalSupabaseImageUrl(uri.trim()) : '';
   const optimizedUri = originalUri ? optimizeSupabaseImageUrl(originalUri, optimize) : '';
   const [source, setSource] = React.useState<ImageSourcePropType | null>(
@@ -26,10 +27,22 @@ export function RemoteImage({ uri, fallbackSource, optimize, onError, ...props }
 
   if (!source) return null;
 
+  const contentFit = resizeMode === 'stretch'
+    ? 'fill'
+    : resizeMode === 'center'
+      ? 'contain'
+      : resizeMode === 'repeat'
+        ? 'cover'
+        : resizeMode ?? 'cover';
+
   return (
     <Image
-      {...props}
-      source={source}
+      {...(props as Omit<React.ComponentProps<typeof Image>, 'source'>)}
+      source={source as React.ComponentProps<typeof Image>['source']}
+      contentFit={contentFit}
+      cachePolicy="memory-disk"
+      transition={120}
+      recyclingKey={originalUri || undefined}
       onError={(event) => {
         const currentUri = typeof source === 'object' && 'uri' in source ? source.uri : '';
         if (originalUri && currentUri !== originalUri) {
@@ -40,7 +53,7 @@ export function RemoteImage({ uri, fallbackSource, optimize, onError, ...props }
           setSource(fallbackSource);
           return;
         }
-        onError?.(event);
+        onError?.(event as never);
       }}
     />
   );

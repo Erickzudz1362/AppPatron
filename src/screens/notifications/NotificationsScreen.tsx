@@ -21,7 +21,6 @@ import { fetchNotices } from '../../api/supabaseData';
 import type { NoticeItem } from '../../api/fallbackData';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { supabase } from '../../config/supabase';
-import { showLocalNoticeNotification } from '../../notifications/push';
 import { useAuth } from '../../context/AuthContext';
 
 const FILTERS = ['Todos', 'Promos', 'Avisos', 'Sistema'] as const;
@@ -104,21 +103,7 @@ export default function NotificationsScreen() {
   useEffect(() => {
     const channel = supabase
       .channel('notifications-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          const row = payload.new as Record<string, unknown>;
-          const targetUserId = typeof row.target_user_id === 'string' ? row.target_user_id : null;
-          const title = typeof row.title === 'string' ? row.title : 'Nuevo aviso';
-          const body =
-            typeof row.message === 'string'
-              ? row.message
-              : typeof row.body === 'string'
-              ? row.body
-              : 'Revisa la sección Avisos.';
-          if (!targetUserId || targetUserId === session?.user?.id) {
-            void showLocalNoticeNotification(title, body);
-          }
-        }
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
         void refreshSilently();
       })
       .subscribe();

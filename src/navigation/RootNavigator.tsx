@@ -64,6 +64,60 @@ export function RootNavigator() {
   const { initializing, session, profile, profileLoadPending, actualRole, role, adminViewRole, passwordRecovery } = useAuth();
   const { colors } = useAppTheme();
 
+  useEffect(() => {
+    if (Platform.OS === 'web' || !session?.user || !role) return;
+    let active = true;
+    let subscription: { remove: () => void } | null = null;
+
+    const openRelevantScreen = (data: Record<string, unknown> | undefined) => {
+      if (!active || !navigationRef.isReady()) return;
+      const kind = typeof data?.kind === 'string' ? data.kind : '';
+      if (!kind) return;
+      if (role === 'admin') {
+        (navigationRef.navigate as any)('StaffRoot', { screen: 'Bookings' });
+      } else if (role === 'barber') {
+        (navigationRef.navigate as any)('BarberStaffRoot', { screen: 'BarberBookings' });
+      } else {
+        (navigationRef.navigate as any)('Main', { screen: 'History' });
+      }
+    };
+
+    void import('expo-notifications/build/NotificationsEmitter').then((notifications) => {
+      if (!active) return;
+      const lastResponse = notifications.getLastNotificationResponse();
+      if (lastResponse) {
+        openRelevantScreen(lastResponse.notification.request.content.data as Record<string, unknown>);
+        notifications.clearLastNotificationResponse();
+      }
+      subscription = notifications.addNotificationResponseReceivedListener((response) => {
+        openRelevantScreen(response.notification.request.content.data as Record<string, unknown>);
+      });
+    }).catch(() => undefined);
+
+    return () => {
+      active = false;
+      subscription?.remove();
+    };
+  }, [role, session?.user]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !session?.user || !role) return;
+    const target = new URLSearchParams(window.location.search).get('screen');
+    if (!target || !navigationRef.isReady()) return;
+
+    if (target === 'Bookings' && role === 'admin') {
+      (navigationRef.navigate as any)('StaffRoot', { screen: 'Bookings' });
+    } else if (target === 'Bookings' && role === 'barber') {
+      (navigationRef.navigate as any)('BarberStaffRoot', { screen: 'BarberBookings' });
+    } else if (target === 'History' && role === 'client') {
+      (navigationRef.navigate as any)('Main', { screen: 'History' });
+    }
+
+    const cleanUrl = new URL(window.location.href);
+    cleanUrl.searchParams.delete('screen');
+    window.history.replaceState(window.history.state, '', `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+  }, [role, session?.user]);
+
   const stackScreenOptions = {
     headerShown: false,
     contentStyle: { backgroundColor: colors.background },

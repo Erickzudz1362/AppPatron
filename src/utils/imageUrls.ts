@@ -1,4 +1,4 @@
-import { Image } from 'react-native';
+import { Image } from 'expo-image';
 
 const PUBLIC_OBJECT_SEGMENT = '/storage/v1/object/public/';
 const PUBLIC_RENDER_SEGMENT = '/storage/v1/render/image/public/';
@@ -47,9 +47,8 @@ export function originalSupabaseImageUrl(url: string | null | undefined) {
 }
 
 export function prefetchImageUrls(urls: Array<string | null | undefined>) {
-  urls
-    .filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
-    .forEach((url) => {
-      Image.prefetch(url).catch(() => undefined);
-    });
+  const validUrls = urls.filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url));
+  if (validUrls.length) {
+    void Image.prefetch(validUrls, 'memory-disk').catch(() => false);
+  }
 }

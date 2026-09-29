@@ -62,7 +62,7 @@ export async function requestWebNotificationPermission() {
 }
 
 export async function showWebNotification(title: string, body: string) {
-  if (!(await requestWebNotificationPermission())) return;
+  if (!isWeb || !('Notification' in window) || Notification.permission !== 'granted') return;
 
   const registration = await navigator.serviceWorker?.ready?.catch(() => null);
   if (registration?.showNotification) {

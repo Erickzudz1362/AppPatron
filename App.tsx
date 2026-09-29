@@ -1,6 +1,6 @@
 // App.tsx
 import React, { useEffect, useState } from 'react';
-import { View } from 'react-native';
+import { ActivityIndicator, Image, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 // Importar solo el handler evita cargar el registro automatico de push (DevicePushTokenAutoRegistration),
 // que en Expo Go Android SDK 53+ dispara console.error y la pantalla roja de desarrollo.
@@ -41,7 +41,7 @@ export default function App() {
       if (mounted) {
         setIconsReady(true);
       }
-    }, 450);
+    }, 120);
 
     Font.loadAsync(Feather.font)
       .catch(() => undefined)
@@ -59,7 +59,12 @@ export default function App() {
   }, []);
 
   if (!iconsReady) {
-    return null;
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#06141D' }}>
+        <Image source={require('./assets/splash-icon.png')} style={{ width: 88, height: 88, borderRadius: 22, marginBottom: 18 }} />
+        <ActivityIndicator color="#08B9C7" />
+      </View>
+    );
   }
 
   return (

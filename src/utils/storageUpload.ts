@@ -194,6 +194,7 @@ export async function uploadImageFromUri(params: {
     const { error } = await supabase.storage.from(params.bucket).upload(params.path, body, {
       upsert: true,
       contentType,
+      cacheControl: '31536000',
     });
 
     if (pickedFile) {
@@ -234,6 +235,7 @@ export async function uploadImageFromUri(params: {
   const { error } = await supabase.storage.from(params.bucket).upload(params.path, body, {
     upsert: true,
     contentType,
+    cacheControl: '31536000',
   });
 
   if (error) throw error;

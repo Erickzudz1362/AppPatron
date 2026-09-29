@@ -11,7 +11,7 @@ import { useAppTheme } from '../../theme/ThemeProvider';
 import AppDialog from '../../components/AppDialog';
 import { downloadImageFileOnWeb } from '../../utils/webDownloads';
 
-const QR_FALLBACK = require('../../../assets/icon.png');
+const QR_FALLBACK = require('../../../assets/splash-icon.png');
 const QR_STORAGE_BUCKET = (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_QR_BUCKET?.trim()) || 'payment-assets';
 const QR_STORAGE_PATH = (typeof process !== 'undefined' && process.env?.EXPO_PUBLIC_QR_PATH?.trim()) || 'qr/current.png';
 
@@ -59,6 +59,7 @@ export default function BookingSuccessScreen({ navigation, route }: any) {
   const discountAmount = Number(route?.params?.discountAmount ?? 0);
   const couponCode = typeof route?.params?.couponCode === 'string' ? route.params.couponCode : '';
   const barber = route?.params?.barber as { name: string } | undefined;
+  const isRescheduled = route?.params?.mode === 'rescheduled';
 
   const qrPublicUrl = useMemo(() => {
     const { data } = supabase.storage.from(QR_STORAGE_BUCKET).getPublicUrl(QR_STORAGE_PATH);
@@ -129,8 +130,12 @@ export default function BookingSuccessScreen({ navigation, route }: any) {
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <View style={styles.hero}>
           <Feather name="check-circle" size={68} color="#fff" />
-          <Text style={styles.heroTitle}>Reserva creada</Text>
-          <Text style={styles.heroSub}>Descarga el QR y envia tu comprobante para revisar el estado desde el historial.</Text>
+          <Text style={styles.heroTitle}>{isRescheduled ? 'Reserva reprogramada' : 'Reserva creada'}</Text>
+          <Text style={styles.heroSub}>
+            {isRescheduled
+              ? 'Guardamos el nuevo horario. El equipo revisará nuevamente la reserva.'
+              : 'Descarga el QR y envía tu comprobante para revisar el estado desde el historial.'}
+          </Text>
         </View>
 
         <View style={styles.card}>
@@ -141,21 +146,21 @@ export default function BookingSuccessScreen({ navigation, route }: any) {
           <Text style={styles.totalText}>Total: {finalTotal} Bs</Text>
         </View>
 
-        <View style={[styles.card, { alignItems: 'center' }]}>
+        {!isRescheduled ? <View style={[styles.card, { alignItems: 'center' }]}>
           <Image source={imageError ? QR_FALLBACK : { uri: qrPublicUrl }} style={styles.qrImage} onError={() => setImageError(true)} />
-        </View>
+        </View> : null}
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => void downloadQr()} disabled={savingQr}>
+        {!isRescheduled ? <TouchableOpacity style={styles.primaryBtn} onPress={() => void downloadQr()} disabled={savingQr}>
           {savingQr ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Descargar QR</Text>}
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
 
-        <TouchableOpacity style={styles.secondaryBtn} onPress={() => void openWhatsApp()}>
+        {!isRescheduled ? <TouchableOpacity style={styles.secondaryBtn} onPress={() => void openWhatsApp()}>
           <Text style={styles.secondaryText}>Enviar comprobante por WhatsApp</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
 
         <TouchableOpacity
-          style={[styles.linkBtn, !proofSent && styles.linkBtnDisabled]}
-          disabled={!proofSent}
+          style={[styles.linkBtn, !isRescheduled && !proofSent && styles.linkBtnDisabled]}
+          disabled={!isRescheduled && !proofSent}
           onPress={() => navigation.getParent?.()?.navigate('History')}
         >
           <Text style={[styles.linkText, !proofSent && { opacity: 0.45 }]}>Ver estado en Historial</Text>

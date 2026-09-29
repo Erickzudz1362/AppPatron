@@ -13,6 +13,7 @@ import { useAsyncResource } from '../../hooks/useAsyncResource';
 import { useAppTheme } from '../../theme/ThemeProvider';
 import { supabase } from '../../config/supabase';
 import AppDialog from '../../components/AppDialog';
+import { getBarberAvailability } from '../../api/bookingApi';
 
 type BarberParam = {
   id: string;
@@ -41,14 +42,6 @@ type SelectableService = {
   name: string;
   duration: number;
   price: number;
-};
-
-const SERVICE_DURATION_FALLBACK: Record<string, number> = {
-  Corte: 30,
-  Barba: 25,
-  Afeitado: 20,
-  Cejas: 20,
-  Color: 60,
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -81,33 +74,18 @@ function normalizeText(v: string): string {
     .trim();
 }
 
-function resolveDurationForStoredAppointment(
-  row: Record<string, unknown>,
-  byId: Map<string, ServiceCatalogRow>
-): number {
-  const byDuration = Number(row.duration_minutes);
-  if (Number.isFinite(byDuration) && byDuration > 0) return byDuration;
-
-  const sid = typeof row.service_id === 'string' ? row.service_id : null;
-  if (sid) {
-    const cat = byId.get(sid);
-    if (typeof cat?.duration_minutes === 'number' && cat.duration_minutes > 0) {
-      return cat.duration_minutes;
-    }
-  }
-
-  const serviceName = row.service_name;
-  if (typeof serviceName === 'string' && serviceName.trim()) {
-    const parts = serviceName.split('+').map((p) => p.trim()).filter(Boolean);
-    if (parts.length) {
-      return parts.reduce((sum, p) => sum + (SERVICE_DURATION_FALLBACK[p] ?? 30), 0);
-    }
-  }
-  return 30;
-}
-
 export default function BarberCalendarScreen({ navigation, route }: any) {
   const barber = (route?.params?.barber ?? null) as BarberParam | null;
+  const rescheduleAppointmentId = typeof route?.params?.rescheduleAppointmentId === 'string'
+    ? route.params.rescheduleAppointmentId
+    : null;
+  const initialServiceIds = useMemo<string[]>(
+    () => Array.isArray(route?.params?.initialServiceIds)
+      ? route.params.initialServiceIds.map((value: unknown) => String(value))
+      : [],
+    [route?.params?.initialServiceIds]
+  );
+  const isRescheduling = !!rescheduleAppointmentId;
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
 
@@ -141,7 +119,10 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
     (async () => {
       const [{ data, error }, settingsRes] = await Promise.all([
         supabase.from('services').select('id, name, duration_minutes, price, active').eq('active', true).limit(100),
-        supabase.from('app_settings').select('value').eq('key', 'min_reservation_hours').maybeSingle(),
+        supabase
+          .from('app_settings')
+          .select('key, value')
+          .in('key', ['min_reservation_hours', 'appointment_change_min_hours']),
       ]);
       if (!alive) return;
       if (error) {
@@ -150,13 +131,15 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
       } else {
         setServiceCatalog((data as ServiceCatalogRow[]) ?? []);
       }
-      const h = Number((settingsRes.data as { value?: string } | null)?.value);
+      const settings = (settingsRes.data ?? []) as Array<{ key: string; value: string }>;
+      const settingKey = isRescheduling ? 'appointment_change_min_hours' : 'min_reservation_hours';
+      const h = Number(settings.find((row) => row.key === settingKey)?.value ?? 3);
       if (Number.isFinite(h) && h > 0) setMinLeadHours(h);
     })();
     return () => {
       alive = false;
     };
-  }, [serviceOptions]);
+  }, [isRescheduling, serviceOptions]);
 
   const serviceByName = useMemo(() => {
     const map = new Map<string, ServiceCatalogRow>();
@@ -164,12 +147,6 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
       const n = (s.name ?? '').trim();
       if (n) map.set(n, s);
     });
-    return map;
-  }, [serviceCatalog]);
-
-  const serviceById = useMemo(() => {
-    const map = new Map<string, ServiceCatalogRow>();
-    serviceCatalog.forEach((s) => map.set(s.id, s));
     return map;
   }, [serviceCatalog]);
 
@@ -238,7 +215,10 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
     }
 
     const unique = new Map<string, SelectableService>();
-    const source = picked.length ? picked : serviceCatalog;
+    const rescheduleServices = isRescheduling
+      ? serviceCatalog.filter((row) => initialServiceIds.includes(row.id))
+      : [];
+    const source = rescheduleServices.length ? rescheduleServices : picked.length ? picked : serviceCatalog;
     for (const row of source) {
       const name = (row.name ?? '').trim();
       if (!name) continue;
@@ -250,12 +230,16 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
       });
     }
     return Array.from(unique.values());
-  }, [resolveServiceRowBySpecialty, serviceCatalog, serviceOptions]);
+  }, [initialServiceIds, isRescheduling, resolveServiceRowBySpecialty, serviceCatalog, serviceOptions]);
 
   React.useEffect(() => {
     if (!selectableServices.length) return;
-    setSelectedServiceIds((prev) => (prev.length ? prev.filter((id) => selectableServices.some((s) => s.id === id)) : [selectableServices[0].id]));
-  }, [selectableServices]);
+    setSelectedServiceIds((prev) => {
+      if (prev.length) return prev.filter((id) => selectableServices.some((service) => service.id === id));
+      const initial = initialServiceIds.filter((id) => selectableServices.some((service) => service.id === id));
+      return initial.length ? initial : [selectableServices[0].id];
+    });
+  }, [initialServiceIds, selectableServices]);
 
   const selectedServices = useMemo(
     () => selectedServiceIds.map((id) => selectableServices.find((s) => s.id === id)).filter(Boolean) as SelectableService[],
@@ -272,40 +256,28 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
   }, [selectedServices]);
 
   const loadDayData = useCallback(async () => {
-    if (!barber?.id || !selectedDay?.key) return { appointments: [] as Record<string, unknown>[] };
+    if (!barber?.id || !selectedDay?.key) return null;
     if (!UUID_RE.test(barber.id)) {
-      return { appointments: [] as Record<string, unknown>[] };
+      return null;
     }
-    const { data, error } = await supabase
-      .from('appointments')
-      .select('*')
-      .eq('barber_id', barber.id)
-      .eq('date', selectedDay.key);
-    if (error) throw new Error(error.message);
-    return { appointments: (data as Record<string, unknown>[]) ?? [] };
-  }, [barber?.id, selectedDay?.key]);
+    return getBarberAvailability(barber.id, selectedDay.key, rescheduleAppointmentId);
+  }, [barber?.id, rescheduleAppointmentId, selectedDay?.key]);
 
   const { data, error, refresh, showSkeleton } = useAsyncResource(loadDayData);
 
   const slots = useMemo<Slot[]>(() => {
-    const openingMin = 10 * 60;
-    const closingMin = 20 * 60 + 30;
+    if (!data?.open) return [];
+    const openingMin = parseMinutes(data.start);
+    const closingMin = parseMinutes(data.end);
+    if (openingMin === null || closingMin === null || closingMin <= openingMin) return [];
     const step = 30;
     const rows: Slot[] = [];
 
-    const booked = (data?.appointments ?? [])
+    const booked = data.blocked
       .map((row) => {
-        const start =
-          parseMinutes(row.start_time) ??
-          parseMinutes(row.starts_at) ??
-          parseMinutes(row.time) ??
-          parseMinutes(row.hour);
-        const end =
-          parseMinutes(row.end_time) ??
-          parseMinutes(row.ends_at) ??
-          (start !== null ? start + resolveDurationForStoredAppointment(row, serviceById) : null);
-        if (start === null || end === null) return null;
-        return { start, end };
+        const start = parseMinutes(row.start);
+        if (start === null) return null;
+        return { start, end: start + row.duration };
       })
       .filter(Boolean) as Array<{ start: number; end: number }>;
 
@@ -326,7 +298,7 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
       });
     }
     return rows;
-  }, [data?.appointments, durationMin, minLeadHours, selectedDay.date, selectedDay.key, serviceById]);
+  }, [data, durationMin, minLeadHours, selectedDay.date, selectedDay.key]);
 
   const selectedSlotObj = useMemo(
     () => slots.find((s) => s.key === selectedSlot) ?? null,
@@ -347,7 +319,7 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
       return;
     }
     const chosen = slots.find((s) => s.key === selectedSlot);
-    if (!chosen) {
+    if (!chosen || !chosen.available) {
       setDialog({ title: 'Selecciona horario', message: 'Elige una hora disponible para continuar.' });
       return;
     }
@@ -368,8 +340,9 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
       durationMin,
       totalPrice: totalPriceSnapshot,
       primaryServiceId,
+      rescheduleAppointmentId,
     });
-  }, [barber?.id, barber?.name, durationMin, navigation, selectedDay.key, selectedDay.label, selectedServices, selectedSlot, slots, totalPriceSnapshot]);
+  }, [barber?.id, barber?.name, durationMin, navigation, rescheduleAppointmentId, selectedDay.key, selectedDay.label, selectedServices, selectedSlot, slots, totalPriceSnapshot]);
 
   if (!barber) {
     return (
@@ -393,7 +366,7 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
           <Feather name="chevron-left" size={22} color={colors.text} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>Agenda de barbero: {barber.name}</Text>
+          <Text style={styles.title}>{isRescheduling ? 'Reprogramar con' : 'Agenda de barbero:'} {barber.name}</Text>
           <Text style={styles.sub}>Reserva con al menos {minLeadHours} horas de anticipación</Text>
         </View>
       </View>
@@ -407,6 +380,7 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
             <TouchableOpacity
               key={item.id}
               style={[styles.chip, active && styles.chipActive]}
+              disabled={isRescheduling}
               onPress={() => {
                 setSelectedServiceIds((prev) => {
                   if (prev.includes(item.id)) {
@@ -517,7 +491,7 @@ export default function BarberCalendarScreen({ navigation, route }: any) {
       </View>
 
       <TouchableOpacity style={styles.reserveBtn} onPress={handleReserve}>
-        <Text style={styles.reserveText}>Continuar</Text>
+        <Text style={styles.reserveText}>{isRescheduling ? 'Revisar reprogramación' : 'Continuar'}</Text>
       </TouchableOpacity>
       </ScrollView>
       <AppDialog visible={!!dialog} title={dialog?.title ?? ''} message={dialog?.message ?? ''} onClose={() => setDialog(null)} />

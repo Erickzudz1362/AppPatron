@@ -8,7 +8,6 @@ import {
   isIosWeb,
   isStandalonePwa,
   promptPwaInstall,
-  requestWebNotificationPermission,
   subscribePwaInstallPrompt,
 } from '../pwa/webPwa';
 
@@ -52,7 +51,6 @@ export function PwaInstallPrompt() {
   };
 
   const install = async () => {
-    await requestWebNotificationPermission();
     if (installAvailable) {
       await promptPwaInstall();
       setVisible(false);

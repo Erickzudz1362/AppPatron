@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, DimensionValue, StyleSheet, ViewStyle } from 'react-native';
+import { Animated, DimensionValue, Platform, StyleSheet, ViewStyle } from 'react-native';
 
 type Props = {
   width: DimensionValue;
@@ -17,8 +17,8 @@ export function Skeleton({ width, height, borderRadius = 8, color, style }: Prop
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.9, duration: 700, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.45, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.9, duration: 700, useNativeDriver: Platform.OS !== 'web' }),
+        Animated.timing(opacity, { toValue: 0.45, duration: 700, useNativeDriver: Platform.OS !== 'web' }),
       ])
     );
     loop.start();

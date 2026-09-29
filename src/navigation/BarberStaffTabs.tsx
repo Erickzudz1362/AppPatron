@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../theme/ThemeProvider';
 import StaffBookingsScreen from '../screens/staff/StaffBookingsScreen';
 import NotificationsScreen from '../screens/notifications/NotificationsScreen';
+import ProfileStackNavigator from './ProfileStack';
 
 const Tab = createBottomTabNavigator();
 
@@ -67,6 +68,17 @@ export default function BarberStaffTabs() {
           headerTitle: 'Avisos',
           tabBarLabel: 'Avisos',
           tabBarIcon: ({ color, size }) => <Feather name="bell" color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="BarberProfile"
+        component={ProfileStackNavigator}
+        options={{
+          title: 'Perfil',
+          headerShown: false,
+          tabBarLabel: 'Perfil',
+          tabBarIcon: ({ color, size }) => <Feather name="user" color={color} size={size} />,
+          popToTopOnBlur: true,
         }}
       />
     </Tab.Navigator>

@@ -4,8 +4,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Feather from '@expo/vector-icons/Feather';
 import { supabase } from '../../config/supabase';
 import { useAppTheme } from '../../theme/ThemeProvider';
-import { showLocalNoticeNotification, scheduleClientAppointmentReminder } from '../../notifications/push';
+import { cancelAppointmentReminders, scheduleClientAppointmentReminder } from '../../notifications/push';
 import { triggerBookingPush } from '../../notifications/remotePush';
+import { createAppointment, rescheduleAppointment } from '../../api/bookingApi';
+import { notificationsEnabled } from '../../notifications/registration';
 
 type SelectedService = { id: string; name: string; duration: number; price: number };
 
@@ -27,16 +29,13 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
   const selectedServices = (route?.params?.selectedServices ?? []) as SelectedService[];
   const durationMin = Number(route?.params?.durationMin ?? 0);
   const totalPrice = Number(route?.params?.totalPrice ?? 0);
+  const rescheduleAppointmentId = typeof route?.params?.rescheduleAppointmentId === 'string'
+    ? route.params.rescheduleAppointmentId
+    : null;
+  const isRescheduling = !!rescheduleAppointmentId;
 
   const discount = couponDiscount;
   const finalTotal = Math.max(0, totalPrice - discount);
-
-  const getFriendlyReservationError = (message: string) => {
-    if (/appointments_barber_id_date_time_key/i.test(message) || /duplicate key value/i.test(message)) {
-      return 'Ese horario acaba de ser reservado por otro cliente. Actualiza los horarios disponibles y elige otro horario.';
-    }
-    return message;
-  };
 
   const resolveCoupon = async () => {
     const trimmed = coupon.trim().toUpperCase();
@@ -100,41 +99,68 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
         return;
       }
 
-      const resolvedDiscount = await resolveCoupon();
-      const resolvedTotal = Math.max(0, totalPrice - resolvedDiscount);
+      if (rescheduleAppointmentId) {
+        const changed = await rescheduleAppointment({
+          appointmentId: rescheduleAppointmentId,
+          date: selectedDay.key,
+          time: selectedSlot.label,
+        });
+        const servicesLabel = selectedServices.map((service) => service.name).join(' + ');
 
-      const payload = {
-        client_id: uid,
-        barber_id: barber.id,
-        service_id: selectedServices[0].id,
-        date: selectedDay.key,
-        time: `${selectedSlot.label}:00`,
-        status: 'pending',
-        notes:
-          selectedServices.length > 1
-            ? `Servicios: ${selectedServices.map((s) => s.name).join(' + ')}`
-            : null,
-        total_price_snapshot: resolvedTotal,
-      };
+        navigation.replace('BookingSuccess', {
+          mode: 'rescheduled',
+          appointmentId: changed.appointment_id,
+          barber,
+          selectedDay,
+          selectedSlot,
+          selectedServices,
+          durationMin: changed.duration_minutes,
+          finalTotal: totalPrice,
+        });
 
-      const { data, error } = await supabase.from('appointments').insert(payload).select('id').single();
-      if (error) {
-        setDialog({ title: 'No se pudo reservar', message: getFriendlyReservationError(error.message) });
+        void (async () => {
+          try {
+            await cancelAppointmentReminders(changed.appointment_id);
+            const at = new Date(`${selectedDay.key}T${selectedSlot.label}:00`);
+            if (!Number.isNaN(at.getTime()) && await notificationsEnabled(uid)) {
+              await scheduleClientAppointmentReminder({
+                appointmentId: changed.appointment_id,
+                at,
+                barberName: barber.name,
+                servicesLabel,
+              });
+            }
+            await triggerBookingPush({
+              kind: 'appointment_rescheduled',
+              appointmentId: changed.appointment_id,
+            });
+          } catch {
+            // La reprogramación ya fue confirmada; los avisos no deben bloquearla.
+          }
+        })();
         return;
       }
 
-      const apptId = data?.id as string | undefined;
+      const booking = await createAppointment({
+        barberId: barber.id,
+        serviceIds: selectedServices.map((service) => service.id),
+        date: selectedDay.key,
+        time: selectedSlot.label,
+        couponCode: coupon,
+      });
+
+      const apptId = booking.appointment_id;
       const servicesLabel = selectedServices.map((s) => s.name).join(' + ');
 
       navigation.replace('BookingSuccess', {
-        appointmentId: data?.id,
+        appointmentId: apptId,
         barber,
         selectedDay,
         selectedSlot,
         selectedServices,
-        durationMin,
-        finalTotal: resolvedTotal,
-        discountAmount: resolvedDiscount,
+        durationMin: booking.duration_minutes,
+        finalTotal: booking.total,
+        discountAmount: booking.discount,
         couponCode: coupon.trim().toUpperCase() || null,
       });
 
@@ -142,7 +168,7 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
         try {
           if (apptId && selectedDay?.key && selectedSlot?.label) {
             const at = new Date(`${selectedDay.key}T${selectedSlot.label}:00`);
-            if (!Number.isNaN(at.getTime())) {
+            if (!Number.isNaN(at.getTime()) && await notificationsEnabled(uid)) {
               await scheduleClientAppointmentReminder({
                 appointmentId: apptId,
                 at,
@@ -152,56 +178,19 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
             }
           }
 
-          await showLocalNoticeNotification(
-            'Reserva creada',
-            `${servicesLabel} el ${selectedDay.label} a las ${selectedSlot.label}.`
-          );
-
-          const { data: barberRow } = await supabase.from('barbers').select('user_id').eq('id', barber.id).maybeSingle();
-          const { data: admins } = await supabase.from('profiles').select('id').eq('role', 'admin');
-          const notificationRows = [
-            {
-              type: 'sistema',
-              title: 'Reserva creada',
-              message: `Tu reserva de ${servicesLabel} fue registrada para el ${selectedDay.label} a las ${selectedSlot.label}.`,
-              target_user_id: uid,
-              is_active: true,
-            },
-            barberRow?.user_id
-              ? {
-                  type: 'sistema',
-                  title: 'Nueva reserva',
-                  message: `Tienes una nueva reserva de ${servicesLabel} para el ${selectedDay.label} a las ${selectedSlot.label}.`,
-                  target_user_id: barberRow.user_id,
-                  is_active: true,
-                }
-              : null,
-            ...((admins ?? []) as { id: string }[]).map((admin) => ({
-              type: 'sistema',
-              title: 'Nueva reserva',
-              message: `Se registro una nueva reserva con ${barber.name} para el ${selectedDay.label} a las ${selectedSlot.label}.`,
-              target_user_id: admin.id,
-              is_active: true,
-            })),
-          ].filter(Boolean);
-
-          if (notificationRows.length) {
-            await supabase.from('notifications').insert(notificationRows as never);
-          }
-
           await triggerBookingPush({
             kind: 'reservation_created',
-            clientId: uid,
-            barberId: barber.id,
-            barberName: barber.name,
-            servicesLabel,
-            dayLabel: selectedDay.label,
-            slotLabel: selectedSlot.label,
+            appointmentId: apptId,
           });
         } catch {
           // La reserva ya fue creada; las notificaciones no deben bloquear ni duplicar el pago.
         }
       })();
+    } catch (error) {
+      setDialog({
+        title: 'No se pudo reservar',
+        message: error instanceof Error ? error.message : 'Ocurrió un error al crear la reserva.',
+      });
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -215,7 +204,7 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
           <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={10}>
             <Feather name="arrow-left" size={22} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.title}>Tu reserva</Text>
+          <Text style={styles.title}>{isRescheduling ? 'Reprogramar cita' : 'Tu reserva'}</Text>
         </View>
 
         <View style={styles.card}>
@@ -235,7 +224,7 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
           <Text style={[styles.infoText, { marginTop: 6 }]}>Duración estimada: {durationMin} min</Text>
         </View>
 
-        <View style={styles.card}>
+        {!isRescheduling ? <><View style={styles.card}>
           <Text style={styles.sectionTitle}>Cupón</Text>
           <View style={styles.couponRow}>
             <TextInput
@@ -278,15 +267,16 @@ export default function BookingSummaryScreen({ navigation, route }: any) {
             <Text style={styles.totalText}>Total</Text>
             <Text style={styles.totalText}>{finalTotal} Bs</Text>
           </View>
-        </View>
+        </View></> : null}
 
         <Text style={styles.legal}>
-          Puntualidad: si no te presentas, tienes hasta 10 minutos de tolerancia respecto a la hora reservada. Pasado ese tiempo la cita puede
-          considerarse no asistida.
+          {isRescheduling
+            ? 'Al confirmar, la cita volverá al estado reservado para que el equipo valide el nuevo horario. Los cambios se permiten únicamente con 3 horas de anticipación.'
+            : 'Puntualidad: si no te presentas, tienes hasta 10 minutos de tolerancia respecto a la hora reservada. Pasado ese tiempo la cita puede considerarse no asistida.'}
         </Text>
 
         <TouchableOpacity style={styles.primaryBtn} onPress={handleConfirm} disabled={saving}>
-          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>Pagar ahora</Text>}
+          {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryText}>{isRescheduling ? 'Confirmar nuevo horario' : 'Pagar ahora'}</Text>}
         </TouchableOpacity>
       </ScrollView>
       <Modal visible={!!dialog} transparent animationType="fade" onRequestClose={() => setDialog(null)}>
